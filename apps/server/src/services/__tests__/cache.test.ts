@@ -13,8 +13,8 @@
  * - Pub/sub message routing
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Redis } from 'ioredis';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Import ACTUAL production functions - not local duplicates
 import {
@@ -310,7 +310,7 @@ describe('CacheService', () => {
       expect(result).toEqual(sessions);
       expect(redis.setex).toHaveBeenCalledWith(
         'tracearr:sessions:active',
-        300, // CACHE_TTL.ACTIVE_SESSIONS
+        30, // CACHE_TTL.ACTIVE_SESSIONS
         expect.any(String)
       );
     });
