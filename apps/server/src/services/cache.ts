@@ -3,9 +3,9 @@
  * Handles caching of active sessions, dashboard stats, and other frequently accessed data
  */
 
-import type { Redis } from 'ioredis';
-import { REDIS_KEYS, CACHE_TTL } from '@tracearr/shared';
 import type { ActiveSession, DashboardStats } from '@tracearr/shared';
+import { CACHE_TTL, REDIS_KEYS } from '@tracearr/shared';
+import type { Redis } from 'ioredis';
 import type { PendingSessionData } from '../jobs/poller/types.js';
 
 export interface CacheService {
@@ -215,6 +215,8 @@ export function createCacheService(redis: Redis): CacheService {
 
     async updateActiveSession(session: ActiveSession): Promise<void> {
       const pipeline = redis.multi();
+      // Ensure session ID is in SET
+      pipeline.sadd(REDIS_KEYS.ACTIVE_SESSION_IDS, session.id);
       pipeline.setex(
         REDIS_KEYS.SESSION_BY_ID(session.id),
         CACHE_TTL.ACTIVE_SESSIONS,
