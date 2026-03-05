@@ -17,6 +17,7 @@ import { rm } from 'node:fs/promises';
 import { isRestoring, setRestoring, setRestoreProgress, setServerMode } from '../serverState.js';
 
 import {
+  checkDumpCompatibility,
   createRestorePoint,
   extractDump,
   restoreDatabase,
@@ -88,9 +89,10 @@ export async function orchestrateRestore(
     // Close our DB pool before restoring
     await closeDatabase();
 
-    // Extract dump from zip
+    // Extract dump from zip and verify PG version compatibility
     const { dumpPath, tempDir } = await extractDump(backupZipPath);
     try {
+      await checkDumpCompatibility(dumpPath);
       await restoreDatabase(dumpPath, backupTimescaleVersion);
       app.log.info('Database restored from backup');
     } finally {

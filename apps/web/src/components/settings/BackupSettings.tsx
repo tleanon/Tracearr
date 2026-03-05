@@ -344,7 +344,9 @@ function RestoreCard({ backup, onClose }: { backup: BackupListItem; onClose: () 
           <dd>{backup.metadata.counts.libraryItems.toLocaleString()}</dd>
           <dt className="text-muted-foreground">{t('backup.restore.tables')}</dt>
           <dd>{backup.metadata.database.tableCount}</dd>
-          <dt className="text-muted-foreground">{t('backup.restore.timescale')}</dt>
+          <dt className="text-muted-foreground">PostgreSQL</dt>
+          <dd>{backup.metadata.database.pgVersion}</dd>
+          <dt className="text-muted-foreground">TimescaleDB</dt>
           <dd>{backup.metadata.database.timescaleVersion}</dd>
         </dl>
 

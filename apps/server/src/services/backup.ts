@@ -228,6 +228,14 @@ export async function createBackup(
   }
 }
 
+async function getPgServerVersion(pgEnv: Record<string, string>): Promise<string> {
+  const result = await execCommand('psql', ['-t', '-A', '-c', 'SHOW server_version;'], pgEnv);
+  if (result.exitCode !== 0) {
+    throw new Error(`Could not query server version: ${result.stderr}`);
+  }
+  return result.stdout.trim();
+}
+
 async function buildMetadata(pgEnv: Record<string, string>): Promise<BackupMetadata> {
   // Read migration journal for migration info
   const journalPaths = [
@@ -299,6 +307,8 @@ async function buildMetadata(pgEnv: Record<string, string>): Promise<BackupMetad
     ]);
   const databaseSize = Number(dbSizeResult.rows[0]?.size ?? 0);
 
+  const pgVersion = await getPgServerVersion(pgEnv);
+
   return {
     format: 1,
     createdAt: new Date().toISOString(),
@@ -308,6 +318,7 @@ async function buildMetadata(pgEnv: Record<string, string>): Promise<BackupMetad
       tag: getCurrentTag() ?? '',
     },
     database: {
+      pgVersion,
       migrationCount,
       latestMigration,
       tableCount,
@@ -413,6 +424,30 @@ export async function validateBackup(zipPath: string): Promise<ValidationResult>
     errors.push('Metadata is missing required fields');
   }
 
+  // PG version check (soft gate): reject early if metadata includes pgVersion
+  // and it's newer than the current server. checkDumpCompatibility() verifies
+  // against the actual dump before restore as the authoritative check.
+  if (metadata.database.pgVersion) {
+    try {
+      const databaseUrl = process.env.DATABASE_URL;
+      if (databaseUrl) {
+        const pgEnv = parseDatabaseUrl(databaseUrl);
+        const currentPgVersion = await getPgServerVersion(pgEnv);
+        const backupPgMajor = parseInt(metadata.database.pgVersion.match(/^(\d+)/)?.[1] ?? '0', 10);
+        const currentPgMajor = parseInt(currentPgVersion.match(/^(\d+)/)?.[1] ?? '0', 10);
+
+        if (backupPgMajor > currentPgMajor) {
+          errors.push(
+            `Backup was created on PostgreSQL ${backupPgMajor} but this server runs PostgreSQL ${currentPgMajor}. ` +
+              `Restoring a dump from a newer PostgreSQL version is not supported.`
+          );
+        }
+      }
+    } catch {
+      // If we can't query the server version, checkDumpCompatibility() will catch it before restore
+    }
+  }
+
   // Version check: backup version must be <= current
   if (metadata.app?.version) {
     const currentParts = getCurrentVersion().split('.').map(Number);
@@ -479,6 +514,50 @@ export async function extractDump(zipPath: string): Promise<{ dumpPath: string; 
 }
 
 // ---------------------------------------------------------------------------
+// Pre-restore PG version check
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the PG version that created a dump using `pg_restore --list`.
+ * The header contains a line like: `; Dumped from database version: 18.3`
+ */
+async function getDumpPgVersion(dumpPath: string): Promise<string | null> {
+  const result = await execCommand('pg_restore', ['--list', dumpPath]);
+  if (result.exitCode !== 0) return null;
+
+  const match = result.stdout.match(/Dumped from database version: (.+)/);
+  return match?.[1]?.trim() ?? null;
+}
+
+/**
+ * Check that the dump's PG major version is compatible with the current server.
+ * A dump from PG 18 cannot be restored into PG 15 — pg_restore will fail with
+ * "unsupported version (X.XX) in file header".
+ *
+ * Call this after extractDump() and before restoreDatabase().
+ */
+export async function checkDumpCompatibility(dumpPath: string): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return;
+
+  const dumpVersion = await getDumpPgVersion(dumpPath);
+  if (!dumpVersion) return;
+
+  const pgEnv = parseDatabaseUrl(databaseUrl);
+  const currentVersion = await getPgServerVersion(pgEnv);
+
+  const dumpMajor = parseInt(dumpVersion.match(/^(\d+)/)?.[1] ?? '0', 10);
+  const currentMajor = parseInt(currentVersion.match(/^(\d+)/)?.[1] ?? '0', 10);
+
+  if (dumpMajor > currentMajor) {
+    throw new Error(
+      `Backup was created on PostgreSQL ${dumpMajor} but this server runs PostgreSQL ${currentMajor}. ` +
+        `Restoring a dump from a newer PostgreSQL version is not supported.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Restore database
 // ---------------------------------------------------------------------------
 
@@ -536,11 +615,17 @@ export async function restoreDatabase(
   }
 
   // Step 3: Restore from dump
+  // --single-transaction wraps the restore in BEGIN/COMMIT so it's all-or-nothing,
+  // and implies --exit-on-error so pg_restore stops and exits non-zero on first failure.
   const restore = await execCommand(
     'pg_restore',
-    ['--no-owner', '--no-acl', '-d', databaseUrl, dumpPath],
+    ['--no-owner', '--no-acl', '--single-transaction', '-d', databaseUrl, dumpPath],
     pgEnv
   );
+
+  if (restore.exitCode !== 0) {
+    throw new Error(`pg_restore failed (exit code ${restore.exitCode}): ${restore.stderr.trim()}`);
+  }
 
   // Step 4: Upgrade TimescaleDB to the installed version if the backup was older.
   // The extension was created at the backup's version in step 2, so this runs the
@@ -573,23 +658,6 @@ export async function restoreDatabase(
   );
   if (postRestore.exitCode !== 0) {
     throw new Error(`TimescaleDB post-restore failed: ${postRestore.stderr}`);
-  }
-
-  // pg_restore exits non-zero for warnings too — check stderr for real errors
-  if (restore.exitCode !== 0) {
-    const fatalLines = restore.stderr
-      .split('\n')
-      .filter(
-        (line) =>
-          line.includes('ERROR') &&
-          !line.includes('already exists') &&
-          !line.includes('role') &&
-          !line.includes('COMMENT')
-      );
-
-    if (fatalLines.length > 0) {
-      throw new Error(`pg_restore failed:\n${fatalLines.join('\n')}`);
-    }
   }
 }
 

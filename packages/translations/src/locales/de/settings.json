@@ -217,7 +217,6 @@
       "rules": "Rules",
       "libraryItems": "Library Items",
       "tables": "Tables",
-      "timescale": "TimescaleDB",
       "warning": "Restoring will replace all existing data. You will need to re-login after the restore completes.",
       "confirmLabel": "I understand this will replace all data",
       "confirm": "Start Restore",
