@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { Database, Loader2, Server, CheckCircle2, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useMaintenanceMode } from '@/hooks/useMaintenanceMode';
@@ -16,18 +15,15 @@ function StatusDot({ ok }: { ok: boolean }) {
 function RestoreProgress() {
   const { t } = useTranslation('pages');
   const { restore } = useMaintenanceMode();
-  const highWaterRef = useRef(-1);
 
   if (!restore) return null;
 
   const currentIdx = (RESTORE_PHASES as readonly string[]).indexOf(restore.phase);
   const isFailed = restore.phase === 'failed';
-
-  // Track the highest phase index we've seen so completed phases stay green on failure
-  if (currentIdx > highWaterRef.current) {
-    highWaterRef.current = currentIdx;
-  }
-  const effectiveIdx = isFailed ? highWaterRef.current : currentIdx;
+  const failedIdx = isFailed
+    ? (RESTORE_PHASES as readonly string[]).indexOf(restore.failedAtPhase ?? '')
+    : -1;
+  const effectiveIdx = isFailed ? failedIdx : currentIdx;
 
   return (
     <div className="w-full max-w-md space-y-4">
@@ -38,7 +34,7 @@ function RestoreProgress() {
         {RESTORE_PHASES.map((phase, idx) => {
           const isActive = !isFailed && phase === restore.phase;
           const isDone = idx < effectiveIdx;
-          const isFailedPhase = isFailed && idx === highWaterRef.current;
+          const isFailedPhase = isFailed && idx === failedIdx;
           return (
             <div key={phase} className="flex items-center gap-3 text-sm">
               {isDone ? (

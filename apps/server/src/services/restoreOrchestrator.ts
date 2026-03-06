@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_PATH = resolve(__dirname, '../../src/db/migrations');
 
-let lastPhase: RestorePhase = 'creating_restore_point';
+let lastPhase: Exclude<RestorePhase, 'failed'> = 'creating_restore_point';
 
 function setPhase(phase: RestorePhase, message: string, error?: string): void {
   if (phase !== 'failed') lastPhase = phase;
@@ -44,6 +44,7 @@ function setPhase(phase: RestorePhase, message: string, error?: string): void {
     message,
     startedAt: new Date().toISOString(),
     ...(error ? { error } : {}),
+    ...(phase === 'failed' ? { failedAtPhase: lastPhase } : {}),
   });
 }
 
