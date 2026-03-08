@@ -121,4 +121,28 @@ export abstract class BaseAgent implements NotificationAgent {
   protected failureTestResult(error: string): TestResult {
     return { success: false, error };
   }
+
+  /**
+   * Build fetch-compatible URL and headers from a URL that may contain
+   * embedded basic-auth credentials. Credentials are extracted and sent
+   * as an Authorization header instead.
+   */
+  protected buildFetchOptions(rawUrl: string): {
+    url: string;
+    authHeaders: Record<string, string>;
+  } {
+    const parsed = new URL(rawUrl);
+    const authHeaders: Record<string, string> = {};
+
+    if (parsed.username || parsed.password) {
+      const credentials = btoa(
+        `${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password)}`
+      );
+      authHeaders['Authorization'] = `Basic ${credentials}`;
+      parsed.username = '';
+      parsed.password = '';
+    }
+
+    return { url: parsed.toString(), authHeaders };
+  }
 }

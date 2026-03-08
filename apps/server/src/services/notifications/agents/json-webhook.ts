@@ -227,9 +227,10 @@ export class JsonWebhookAgent extends BaseAgent {
   }
 
   private async sendWebhook(webhookUrl: string, payload: JsonWebhookPayload): Promise<void> {
-    const response = await fetch(webhookUrl, {
+    const { url, authHeaders } = this.buildFetchOptions(webhookUrl);
+    const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify(payload),
     });
     const text = await response.text().catch(() => '');

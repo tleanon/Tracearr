@@ -161,9 +161,10 @@ export class GotifyAgent extends BaseAgent {
   }
 
   private async sendWebhook(webhookUrl: string, payload: GotifyPayload): Promise<void> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const { url, authHeaders } = this.buildFetchOptions(webhookUrl);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
 
-    const response = await fetch(webhookUrl, {
+    const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),

@@ -185,12 +185,13 @@ export class NtfyAgent extends BaseAgent {
     payload: NtfyPayload,
     authToken: string | null
   ): Promise<void> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const { url, authHeaders } = this.buildFetchOptions(webhookUrl);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
     if (authToken) {
       headers['Authorization'] = `Bearer ${authToken}`;
     }
 
-    const response = await fetch(webhookUrl, {
+    const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),

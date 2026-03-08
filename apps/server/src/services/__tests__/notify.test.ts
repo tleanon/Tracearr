@@ -117,7 +117,7 @@ describe('NotificationManager', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://ntfy.example.com',
+        'https://ntfy.example.com/',
         expect.objectContaining({
           method: 'POST',
           headers: {
@@ -150,7 +150,7 @@ describe('NotificationManager', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://ntfy.example.com',
+        'https://ntfy.example.com/',
         expect.objectContaining({
           method: 'POST',
           headers: {
@@ -257,7 +257,7 @@ describe('NotificationManager', () => {
       await manager.notifyServerDown('Plex Server', settings);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://ntfy.example.com',
+        'https://ntfy.example.com/',
         expect.objectContaining({
           headers: {
             'Content-Type': 'application/json',
@@ -318,7 +318,7 @@ describe('NotificationManager', () => {
       await manager.notifyServerUp('Plex Server', settings);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://ntfy.example.com',
+        'https://ntfy.example.com/',
         expect.objectContaining({
           headers: {
             'Content-Type': 'application/json',
@@ -385,7 +385,7 @@ describe('NotificationManager', () => {
       await manager.notifySessionStarted(session, settings);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://ntfy.example.com',
+        'https://ntfy.example.com/',
         expect.objectContaining({
           headers: {
             'Content-Type': 'application/json',
@@ -498,7 +498,7 @@ describe('testAgent', () => {
 
     expect(result.success).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://ntfy.example.com',
+      'https://ntfy.example.com/',
       expect.objectContaining({
         method: 'POST',
         headers: {
@@ -530,7 +530,7 @@ describe('testAgent', () => {
 
     expect(result.success).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://ntfy.example.com',
+      'https://ntfy.example.com/',
       expect.objectContaining({
         method: 'POST',
         headers: {
