@@ -12,16 +12,15 @@ import { randomBytes } from 'node:crypto';
 import { stat, statfs, writeFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { BackupScheduleType } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { settings } from '../db/schema.js';
 import { isRestoring } from '../serverState.js';
 import { BACKUP_DIR, createBackup, validateBackup, listBackups } from '../services/backup.js';
 import { orchestrateRestore } from '../services/restoreOrchestrator.js';
 import { scheduleBackupJob } from '../jobs/backupQueue.js';
-const SETTINGS_ID = 1;
+import { getBackupScheduleSettings, setSettings } from '../services/settings.js';
 
 // Short-lived download tokens (in-memory, single use, 60s expiry)
 const DOWNLOAD_TOKEN_TTL_MS = 60_000;
@@ -317,26 +316,7 @@ export const backupRoutes: FastifyPluginAsync = async (app) => {
 
   /** GET /backup/schedule — Get current schedule settings */
   app.get('/schedule', { preHandler: [app.requireOwner] }, async () => {
-    const row = await db
-      .select({
-        type: settings.backupScheduleType,
-        time: settings.backupScheduleTime,
-        dayOfWeek: settings.backupScheduleDayOfWeek,
-        dayOfMonth: settings.backupScheduleDayOfMonth,
-        retentionCount: settings.backupRetentionCount,
-      })
-      .from(settings)
-      .where(eq(settings.id, SETTINGS_ID))
-      .limit(1);
-
-    const schedule = row[0] ?? {
-      type: 'disabled' as const,
-      time: '02:00',
-      dayOfWeek: 0,
-      dayOfMonth: 1,
-      retentionCount: 7,
-    };
-
+    const schedule = await getBackupScheduleSettings();
     return { ...schedule, timezone: process.env.TZ || 'UTC' };
   });
 
@@ -351,16 +331,13 @@ export const backupRoutes: FastifyPluginAsync = async (app) => {
 
     const { type, time, dayOfWeek, dayOfMonth, retentionCount } = parsed.data;
 
-    await db
-      .update(settings)
-      .set({
-        backupScheduleType: type as BackupScheduleType,
-        backupScheduleTime: time,
-        backupScheduleDayOfWeek: dayOfWeek,
-        backupScheduleDayOfMonth: dayOfMonth,
-        backupRetentionCount: retentionCount,
-      })
-      .where(eq(settings.id, SETTINGS_ID));
+    await setSettings({
+      backupScheduleType: type,
+      backupScheduleTime: time,
+      backupScheduleDayOfWeek: dayOfWeek,
+      backupScheduleDayOfMonth: dayOfMonth,
+      backupRetentionCount: retentionCount,
+    });
 
     // Reschedule the BullMQ repeatable job
     await scheduleBackupJob({ type: type as BackupScheduleType, time, dayOfWeek, dayOfMonth });

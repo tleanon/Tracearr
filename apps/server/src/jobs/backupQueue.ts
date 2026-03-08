@@ -6,16 +6,13 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { eq } from 'drizzle-orm';
 import { getRedisPrefix } from '@tracearr/shared';
 import type { BackupScheduleType } from '@tracearr/shared';
 import { isMaintenance } from '../serverState.js';
-import { db } from '../db/client.js';
-import { settings } from '../db/schema.js';
+import { getSetting } from '../services/settings.js';
 import { BACKUP_DIR, createBackup, cleanupOldBackups } from '../services/backup.js';
 
 const QUEUE_NAME = 'backup';
-const SETTINGS_ID = 1;
 
 let connectionOptions: ConnectionOptions | null = null;
 let backupQueue: Queue | null = null;
@@ -71,13 +68,7 @@ export function startBackupWorker(): void {
       console.log(`[Backup] Backup created: ${filePath} (v${metadata.app.version})`);
 
       // Read retention count from settings
-      const row = await db
-        .select({ retentionCount: settings.backupRetentionCount })
-        .from(settings)
-        .where(eq(settings.id, SETTINGS_ID))
-        .limit(1);
-
-      const retentionCount = row[0]?.retentionCount ?? 7;
+      const retentionCount = await getSetting('backupRetentionCount');
       const deleted = await cleanupOldBackups(retentionCount);
 
       if (deleted > 0) {

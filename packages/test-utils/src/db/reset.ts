@@ -21,7 +21,7 @@ import { executeRawSql, closeTestPool } from './pool.js';
  * 8. server_users (depends on users, servers)
  * 9. servers (standalone)
  * 10. users (standalone)
- * 11. settings (standalone, single row)
+ * 11. settings (standalone, key-value store)
  */
 const TABLES_TO_TRUNCATE = [
   'violations',
@@ -34,7 +34,7 @@ const TABLES_TO_TRUNCATE = [
   'server_users',
   'servers',
   'users',
-  // Settings is a single-row config table, reset to defaults instead
+  'settings',
 ];
 
 /**
@@ -49,12 +49,6 @@ export async function resetTestDb(): Promise<void> {
   try {
     // Use a single TRUNCATE command with CASCADE for efficiency
     await executeRawSql(`TRUNCATE TABLE ${TABLES_TO_TRUNCATE.join(', ')} RESTART IDENTITY CASCADE`);
-
-    // Reset settings to defaults (it's a single-row table)
-    await executeRawSql(`
-      DELETE FROM settings WHERE id = 1;
-      INSERT INTO settings (id) VALUES (1);
-    `);
   } catch (error) {
     // Table might not exist yet if migrations haven't run
     if (error instanceof Error && error.message.includes('does not exist')) {

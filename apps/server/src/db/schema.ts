@@ -25,7 +25,7 @@ import {
   check,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
-import { MEDIA_TYPES, type BackupScheduleType, type WebhookFormat } from '@tracearr/shared';
+import { MEDIA_TYPES } from '@tracearr/shared';
 
 // Server types enum
 export const serverTypeEnum = ['plex', 'jellyfin', 'emby'] as const;
@@ -655,63 +655,11 @@ export const terminationLogs = pgTable(
 // Unit system enum for display preferences
 export const unitSystemEnum = ['metric', 'imperial'] as const;
 
-// Application settings (single row)
+// Application settings (key-value store)
 export const settings = pgTable('settings', {
-  id: integer('id').primaryKey().default(1),
-  allowGuestAccess: boolean('allow_guest_access').notNull().default(false),
-  // Display preferences
-  unitSystem: varchar('unit_system', { length: 20 })
-    .notNull()
-    .$type<(typeof unitSystemEnum)[number]>()
-    .default('metric'),
-  // Notification settings
-  discordWebhookUrl: text('discord_webhook_url'),
-  customWebhookUrl: text('custom_webhook_url'),
-  webhookFormat: text('webhook_format').$type<WebhookFormat>(), // Format for custom webhook payloads
-  ntfyTopic: text('ntfy_topic'), // Topic for ntfy notifications (required when webhookFormat is 'ntfy')
-  ntfyAuthToken: text('ntfy_auth_token'), // Auth token for protected ntfy servers (Bearer token)
-  pushoverUserKey: text('pushover_user_key'),
-  pushoverApiToken: text('pushover_api_token'),
-  // Poller settings
-  pollerEnabled: boolean('poller_enabled').notNull().default(true),
-  pollerIntervalMs: integer('poller_interval_ms').notNull().default(15000),
-  // GeoIP settings
-  usePlexGeoip: boolean('use_plex_geoip').notNull().default(false), // Use Plex API for GeoIP lookups (sends IPs to plex.tv)
-  // Tautulli integration
-  tautulliUrl: text('tautulli_url'),
-  tautulliApiKey: text('tautulli_api_key'), // Encrypted
-  // Network/access settings for self-hosted deployments
-  externalUrl: text('external_url'), // Public URL for mobile/external access (e.g., https://tracearr.example.com)
-  trustProxy: boolean('trust_proxy').notNull().default(false), // Trust X-Forwarded-* headers from reverse proxy
-  // Mobile access
-  mobileEnabled: boolean('mobile_enabled').notNull().default(false),
-  // Authentication settings
-  primaryAuthMethod: varchar('primary_auth_method', { length: 20 })
-    .$type<'jellyfin' | 'local'>()
-    .notNull()
-    .default('local'), // Default to local auth
-  // Tailscale VPN integration
-  tailscaleEnabled: boolean('tailscale_enabled').notNull().default(false),
-  tailscaleState: text('tailscale_state'), // Persisted tailscaled state blob (base64)
-  tailscaleHostname: varchar('tailscale_hostname', { length: 255 }), // Custom machine name on tailnet
-  // Backup settings
-  backupScheduleType: varchar('backup_schedule_type', { length: 20 })
-    .$type<BackupScheduleType>()
-    .notNull()
-    .default('disabled'),
-  backupScheduleTime: varchar('backup_schedule_time', { length: 5 }) // HH:MM 24h
-    .notNull()
-    .default('02:00'),
-  backupScheduleDayOfWeek: integer('backup_schedule_day_of_week') // 0=Sun..6=Sat
-    .notNull()
-    .default(0),
-  backupScheduleDayOfMonth: integer('backup_schedule_day_of_month') // 1-28
-    .notNull()
-    .default(1),
-  backupRetentionCount: integer('backup_retention_count') // How many scheduled backups to keep
-    .notNull()
-    .default(7),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  value: jsonb('value'),
 });
 
 // ============================================================================

@@ -124,17 +124,6 @@ function mockDbSelectUsers(users: { id: string }[]) {
   } as never);
 }
 
-/**
- * Create a mock for db.update()
- */
-function mockDbUpdate() {
-  vi.mocked(db.update).mockReturnValue({
-    set: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(undefined),
-    }),
-  } as never);
-}
-
 describe('Debug Routes', () => {
   let app: FastifyInstance;
   const ownerUser = createOwnerUser();
@@ -498,9 +487,6 @@ describe('Debug Routes', () => {
       // Mock all delete operations
       vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
 
-      // Mock update for settings reset
-      mockDbUpdate();
-
       const response = await app.inject({
         method: 'POST',
         url: '/debug/reset',
@@ -511,13 +497,10 @@ describe('Debug Routes', () => {
       expect(body.success).toBe(true);
       expect(body.message).toContain('Factory reset complete');
 
-      // Verify delete was called 14 times (violations, terminationLogs, sessions, rules,
+      // Verify delete was called 15 times (violations, terminationLogs, sessions, rules,
       // notificationChannelRouting, notificationPreferences, mobileSessions, mobileTokens,
-      // librarySnapshots, libraryItems, serverUsers, servers, plexAccounts, users)
-      expect(db.delete).toHaveBeenCalledTimes(14);
-
-      // Verify settings update was called
-      expect(db.update).toHaveBeenCalled();
+      // librarySnapshots, libraryItems, serverUsers, servers, plexAccounts, users, settings)
+      expect(db.delete).toHaveBeenCalledTimes(15);
     });
   });
 

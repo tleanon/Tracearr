@@ -6,7 +6,8 @@ import { eq, and, isNull, isNotNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { TautulliImportProgress, TautulliImportResult } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { settings, sessions, serverUsers, users } from '../db/schema.js';
+import { sessions, serverUsers, users } from '../db/schema.js';
+import { getSettings } from './settings.js';
 import { refreshAggregates, checkAggregateNeedsRebuild } from '../db/timescale.js';
 import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
 import { geoipService } from './geoip.js';
@@ -519,10 +520,9 @@ export class TautulliService {
     const skipRefresh = options?.skipRefresh ?? false;
 
     // Get Tautulli settings
-    const settingsRow = await db.select().from(settings).where(eq(settings.id, 1)).limit(1);
+    const config = await getSettings(['tautulliUrl', 'tautulliApiKey']);
 
-    const config = settingsRow[0];
-    if (!config?.tautulliUrl || !config?.tautulliApiKey) {
+    if (!config.tautulliUrl || !config.tautulliApiKey) {
       return {
         success: false,
         imported: 0,
@@ -1268,13 +1268,12 @@ export class TautulliService {
     const CONCURRENCY = 10; // 10 parallel API calls
 
     // Get Tautulli settings
-    const settingsRow = await db.select().from(settings).where(eq(settings.id, 1)).limit(1);
-    const config = settingsRow[0];
-    if (!config?.tautulliUrl || !config?.tautulliApiKey) {
+    const tautulliConfig = await getSettings(['tautulliUrl', 'tautulliApiKey']);
+    if (!tautulliConfig.tautulliUrl || !tautulliConfig.tautulliApiKey) {
       throw new Error('Tautulli is not configured');
     }
 
-    const tautulli = new TautulliService(config.tautulliUrl, config.tautulliApiKey);
+    const tautulli = new TautulliService(tautulliConfig.tautulliUrl, tautulliConfig.tautulliApiKey);
 
     // Test connection
     const connected = await tautulli.testConnection();

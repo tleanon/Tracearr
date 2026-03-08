@@ -36,9 +36,16 @@ vi.mock('../../services/termination.js', () => ({
   terminateSession: vi.fn(),
 }));
 
+// Mock settings service (mobile.ts uses getSetting/setSetting)
+vi.mock('../../services/settings.js', () => ({
+  getSetting: vi.fn(),
+  setSetting: vi.fn(),
+}));
+
 // Import mocked db and routes
 import { db } from '../../db/client.js';
 import { mobileRoutes } from '../mobile.js';
+import { getSetting, setSetting as _setSetting } from '../../services/settings.js';
 
 // Mock Redis
 const mockRedis = {
@@ -126,6 +133,8 @@ describe('Mobile Routes - Beta Mode Enabled', () => {
     vi.mocked(db.update).mockReset();
     vi.mocked(db.delete).mockReset();
     vi.mocked(db.transaction).mockReset();
+    vi.mocked(getSetting).mockReset();
+    vi.mocked(_setSetting).mockReset();
     mockRedis.get.mockReset();
     mockRedis.set.mockReset();
     mockRedis.setex.mockReset();
@@ -482,11 +491,7 @@ describe('Mobile Routes - Beta Mode Enabled', () => {
     it('generates tokens with 100 year expiry', async () => {
       app = await buildTestApp(ownerUser);
 
-      vi.mocked(db.select).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{ mobileEnabled: true }]),
-        }),
-      } as never);
+      vi.mocked(getSetting).mockResolvedValue(true);
 
       mockRedis.eval.mockResolvedValue(1);
 
@@ -532,11 +537,7 @@ describe('Mobile Routes - Beta Mode Enabled', () => {
     it('allows generating tokens even at device limit', async () => {
       app = await buildTestApp(ownerUser);
 
-      vi.mocked(db.select).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{ mobileEnabled: true }]),
-        }),
-      } as never);
+      vi.mocked(getSetting).mockResolvedValue(true);
 
       mockRedis.eval.mockResolvedValue(1);
 

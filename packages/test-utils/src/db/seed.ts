@@ -23,7 +23,6 @@ export interface SeedResult {
  * - 1 owner user
  * - 1 Plex server
  * - 1 server_user linking them
- * - Default settings row
  */
 export async function seedBasicOwner(): Promise<SeedResult> {
   // Create owner user
@@ -49,12 +48,6 @@ export async function seedBasicOwner(): Promise<SeedResult> {
     RETURNING id
   `);
   const serverUserId = serverUserResult.rows[0].id as string;
-
-  // Ensure settings row exists
-  await executeRawSql(`
-    INSERT INTO settings (id) VALUES (1)
-    ON CONFLICT (id) DO NOTHING
-  `);
 
   return { userId, serverId, serverUserId };
 }
@@ -181,7 +174,8 @@ export async function seedMobilePairing(): Promise<SeedResult & { tokenHash: str
 
   // Enable mobile in settings
   await executeRawSql(`
-    UPDATE settings SET mobile_enabled = true WHERE id = 1
+    INSERT INTO settings (name, value) VALUES ('mobileEnabled', 'true'::jsonb)
+    ON CONFLICT (name) DO UPDATE SET value = 'true'::jsonb
   `);
 
   // Create a pairing token (hash of 'test-mobile-token')

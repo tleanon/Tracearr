@@ -377,19 +377,8 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
     await db.delete(plexAccounts); // plex_accounts references users
     await db.delete(users);
 
-    // Reset settings to defaults
-    await db
-      .update(settings)
-      .set({
-        allowGuestAccess: false,
-        discordWebhookUrl: null,
-        customWebhookUrl: null,
-        pollerEnabled: true,
-        pollerIntervalMs: 15000,
-        tautulliUrl: null,
-        tautulliApiKey: null,
-      })
-      .where(sql`id = 1`);
+    // Reset settings to defaults (KV store — just delete all rows; service uses defaults for missing keys)
+    await db.delete(settings);
 
     return {
       success: true,

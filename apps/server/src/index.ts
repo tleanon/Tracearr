@@ -66,7 +66,11 @@ import { libraryRoutes } from './routes/library.js';
 import { tailscaleRoutes } from './routes/tailscale.js';
 import { tasksRoutes } from './routes/tasks.js';
 import { backupRoutes } from './routes/backup.js';
-import { getPollerSettings, getNetworkSettings } from './routes/settings.js';
+import {
+  getPollerSettings,
+  getNetworkSettings,
+  getBackupScheduleSettings,
+} from './routes/settings.js';
 import { initializeEncryption, migrateToken, looksEncrypted } from './utils/crypto.js';
 import { geoipService } from './services/geoip.js';
 import { tailscaleService } from './services/tailscale.js';
@@ -124,7 +128,7 @@ import { cleanupMobileTokens } from './jobs/cleanupMobileTokens.js';
 import { db, checkDatabaseConnection, runMigrations } from './db/client.js';
 import { initTimescaleDB, getTimescaleStatus, updateTimescaleExtensions } from './db/timescale.js';
 import { eq } from 'drizzle-orm';
-import { servers, settings } from './db/schema.js';
+import { servers } from './db/schema.js';
 import { initializeClaimCode } from './utils/claimCode.js';
 import { registerService, unregisterService } from './services/serviceTracker.js';
 import {
@@ -753,20 +757,8 @@ async function initializeServices(app: FastifyInstance) {
     startBackupWorker();
 
     // Read backup schedule from settings and configure repeatable job
-    const backupSettings = await db
-      .select({
-        type: settings.backupScheduleType,
-        time: settings.backupScheduleTime,
-        dayOfWeek: settings.backupScheduleDayOfWeek,
-        dayOfMonth: settings.backupScheduleDayOfMonth,
-      })
-      .from(settings)
-      .where(eq(settings.id, 1))
-      .limit(1);
-
-    if (backupSettings[0]) {
-      await scheduleBackupJob(backupSettings[0]);
-    }
+    const backupSchedule = await getBackupScheduleSettings();
+    await scheduleBackupJob(backupSchedule);
 
     app.log.info('Backup queue initialized');
   } catch (err) {
