@@ -12,7 +12,6 @@ import {
   SESSION_LIMITS,
   type ActiveSession,
   type RuleV2,
-  type Session,
   type SessionState,
 } from '@tracearr/shared';
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
@@ -67,6 +66,104 @@ const defaultConfig: PollerConfig = {
 // been force-stopped by the stale session sweep. 7 days gives ample buffer.
 const ACTIVE_SESSION_CHUNK_BOUND_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Grace period tracking for session stop detection.
+// When a session disappears from a poll response, it enters a grace period
+// rather than being stopped immediately. This prevents data loss from transient
+// API failures (e.g., Emby/Jellyfin returning incomplete session data).
+// On first miss: session is removed from cache (UI hides it) but DB is untouched.
+// If the session reappears, it's recovered seamlessly with no data loss.
+// On the NEXT poll, if still absent, the DB stop is confirmed and notification sent.
+// Key: `serverId:sessionKey`, Value: ActiveSession snapshot for notification on confirmed stop.
+const missedPollTracking = new Map<string, ActiveSession>();
+
+/**
+ * Handle first-miss grace period entries for a set of cached session keys.
+ * Sessions that just disappeared from the API response are removed from cache
+ * (UI hides them) but NOT stopped in DB. An ActiveSession snapshot is stored
+ * in missedPollTracking for notification on confirmed stop.
+ */
+async function handleFirstMisses(
+  cachedKeys: Iterable<string>,
+  serverId: string,
+  activeSessions: ActiveSession[]
+): Promise<void> {
+  for (const cachedKey of cachedKeys) {
+    if (!cachedKey.startsWith(`${serverId}:`)) continue;
+    if (missedPollTracking.has(cachedKey)) continue; // Already in grace period
+
+    const cachedActiveSession = activeSessions.find(
+      (s) => `${s.serverId}:${s.sessionKey}` === cachedKey
+    );
+    if (!cachedActiveSession) {
+      console.warn(
+        `[Poller] Cache mismatch for ${cachedKey}: in cachedSessionKeys but not in activeSessions`
+      );
+      continue;
+    }
+
+    missedPollTracking.set(cachedKey, cachedActiveSession);
+    try {
+      if (cacheService) {
+        await cacheService.removeActiveSession(cachedActiveSession.id);
+        await cacheService.removeUserSession(
+          cachedActiveSession.serverUserId,
+          cachedActiveSession.id
+        );
+      }
+      if (pubSubService) {
+        await pubSubService.publish('session:stopped', cachedActiveSession.id);
+      }
+    } catch (err) {
+      console.error(`[Poller] Failed to remove/broadcast grace period stop for ${cachedKey}:`, err);
+    }
+  }
+}
+
+/**
+ * Sweep grace period entries that were tracked in a PREVIOUS poll cycle.
+ * For each entry still absent, confirm the stop in DB and send notification.
+ * Failed entries stay in the map for retry on the next poll.
+ */
+async function sweepGracePeriod(
+  keysToSweep: Set<string>,
+  serverId: string,
+  currentSessionKeys?: Set<string>
+): Promise<void> {
+  for (const key of keysToSweep) {
+    if (currentSessionKeys?.has(key)) continue; // Reappeared
+
+    try {
+      const sessionKey = key.replace(`${serverId}:`, '');
+      const session = await findActiveSession({ serverId, sessionKey });
+      if (session) {
+        const { wasUpdated, needsRetry, retryData } = await stopSessionAtomic({
+          session,
+          stoppedAt: new Date(),
+        });
+        if (needsRetry && retryData && cacheService) {
+          await cacheService.addSessionWriteRetry(session.id, retryData);
+        }
+        if (wasUpdated) {
+          const snapshot = missedPollTracking.get(key);
+          if (snapshot) {
+            try {
+              await enqueueNotification({ type: 'session_stopped', payload: snapshot });
+            } catch (notifErr) {
+              console.error(`[Poller] Failed to enqueue stop notification for ${key}:`, notifErr);
+            }
+          }
+        }
+      } else {
+        console.log(`[Poller] Grace period: session for ${key} already stopped by another process`);
+      }
+    } catch (err) {
+      console.error(`[Poller] Grace period sweep failed for ${key}, will retry next poll:`, err);
+      continue;
+    }
+    missedPollTracking.delete(key);
+  }
+}
+
 // ============================================================================
 // Server Session Processing
 // ============================================================================
@@ -91,7 +188,7 @@ async function processServerSessions(
   server: ServerWithToken,
   activeRulesV2: RuleV2[],
   cachedSessionKeys: Set<string>,
-  activeSessions: Session[] = []
+  activeSessions: ActiveSession[] = []
 ): Promise<ServerProcessingResult> {
   const newSessions: ActiveSession[] = [];
   const updatedSessions: ActiveSession[] = [];
@@ -112,37 +209,15 @@ async function processServerSessions(
 
     // OPTIMIZATION: Early return if no active sessions from media server
     if (processedSessions.length === 0) {
-      // Still need to handle stopped sessions detection
-      const stoppedSessionKeys: string[] = [];
-      for (const cachedKey of cachedSessionKeys) {
-        if (cachedKey.startsWith(`${server.id}:`)) {
-          stoppedSessionKeys.push(cachedKey);
+      // Snapshot keys already in grace period BEFORE adding new entries
+      const keysToSweep = new Set(
+        [...missedPollTracking.keys()].filter((k) => k.startsWith(`${server.id}:`))
+      );
+      await handleFirstMisses(cachedSessionKeys, server.id, activeSessions);
+      await sweepGracePeriod(keysToSweep, server.id);
 
-          // Mark session as stopped in database
-          const sessionKey = cachedKey.replace(`${server.id}:`, '');
-          const stoppedSession = await findActiveSession({ serverId: server.id, sessionKey });
-
-          if (stoppedSession) {
-            const { wasUpdated, needsRetry, retryData } = await stopSessionAtomic({
-              session: stoppedSession,
-              stoppedAt: new Date(),
-            });
-
-            if (needsRetry && retryData && cacheService) {
-              await cacheService.addSessionWriteRetry(stoppedSession.id, retryData);
-            }
-
-            if (!wasUpdated) {
-              const keyIndex = stoppedSessionKeys.indexOf(cachedKey);
-              if (keyIndex > -1) {
-                stoppedSessionKeys.splice(keyIndex, 1);
-              }
-            }
-          }
-        }
-      }
-
-      return { success: true, newSessions: [], stoppedSessionKeys, updatedSessions: [] };
+      // stoppedSessionKeys intentionally empty
+      return { success: true, newSessions: [], stoppedSessionKeys: [], updatedSessions: [] };
     }
 
     // OPTIMIZATION: Only load server users that match active sessions (not all users for server)
@@ -362,10 +437,11 @@ async function processServerSessions(
 
             if (existingWithSameKey) {
               cachedSessionKeys.add(sessionKey);
-              console.log(
-                `[Poller] Active session already exists for ${processed.sessionKey}, skipping create`
-              );
-              return null;
+              // Clear any grace period tracking — session is confirmed active
+              missedPollTracking.delete(sessionKey);
+              console.log(`[Poller] Recovering active session ${processed.sessionKey} into cache`);
+              // Return the existing session for cache recovery instead of null
+              return { rediscovered: existingWithSameKey };
             }
 
             // Check if this session was recently terminated (cooldown prevents re-creation)
@@ -449,6 +525,44 @@ async function processServerSessions(
         );
 
         if (!createResult) {
+          continue;
+        }
+
+        // Handle rediscovered session — existing active session found in DB but missing from cache.
+        // This happens on server restart or after a grace period recovery.
+        if ('rediscovered' in createResult && createResult.rediscovered) {
+          const existing = createResult.rediscovered;
+          try {
+            // Update lastSeenAt so sweepStaleSessions doesn't kill it
+            await db
+              .update(sessions)
+              .set({ lastSeenAt: new Date() })
+              .where(eq(sessions.id, existing.id));
+            const activeSession = buildActiveSession({
+              session: existing,
+              processed,
+              user: userDetail,
+              geo,
+              server,
+              overrides: {
+                state: processed.state,
+                lastPausedAt: existing.lastPausedAt,
+                pausedDurationMs: existing.pausedDurationMs ?? 0,
+                watched: existing.watched ?? false,
+              },
+            });
+            updatedSessions.push(activeSession);
+          } catch (err) {
+            console.error(`[Poller] Failed to recover rediscovered session ${existing.id}:`, err);
+          }
+          continue;
+        }
+
+        // Guard: rediscovered returned but session was null
+        if ('rediscovered' in createResult) {
+          console.error(
+            `[Poller] Unexpected null rediscovered session for ${processed.sessionKey}`
+          );
           continue;
         }
 
@@ -816,36 +930,30 @@ async function processServerSessions(
       }
     }
 
-    // Find stopped sessions
-    const stoppedSessionKeys: string[] = [];
-    for (const cachedKey of cachedSessionKeys) {
-      if (cachedKey.startsWith(`${server.id}:`) && !currentSessionKeys.has(cachedKey)) {
-        // Mark session as stopped in database
-        const sessionKey = cachedKey.replace(`${server.id}:`, '');
-        const stoppedSession = await findActiveSession({ serverId: server.id, sessionKey });
-
-        if (stoppedSession) {
-          const { wasUpdated, needsRetry, retryData } = await stopSessionAtomic({
-            session: stoppedSession,
-            stoppedAt: new Date(),
-          });
-
-          if (needsRetry && retryData && cacheService) {
-            await cacheService.addSessionWriteRetry(stoppedSession.id, retryData);
-          }
-
-          if (wasUpdated) {
-            stoppedSessionKeys.push(cachedKey);
-          }
-          if (cacheService) {
-            await cacheService.removeActiveSession(stoppedSession.id);
-            await cacheService.removeUserSession(stoppedSession.serverUserId, stoppedSession.id);
-          }
-        }
+    // Clear grace period tracking for sessions that are present in this poll
+    for (const key of currentSessionKeys) {
+      if (missedPollTracking.delete(key)) {
+        console.log(`[Poller] Session ${key} reappeared after grace period miss, recovered`);
       }
     }
 
-    return { success: true, newSessions, stoppedSessionKeys, updatedSessions };
+    // Snapshot keys already in grace period BEFORE adding new entries (sweep only processes previous polls).
+    // Filter to only keys absent from current poll (keys in currentSessionKeys were already cleared above).
+    const keysToSweep = new Set(
+      [...missedPollTracking.keys()].filter((k) => k.startsWith(`${server.id}:`))
+    );
+    await handleFirstMisses(
+      [...cachedSessionKeys].filter(
+        (k) => k.startsWith(`${server.id}:`) && !currentSessionKeys.has(k)
+      ),
+      server.id,
+      activeSessions
+    );
+    await sweepGracePeriod(keysToSweep, server.id, currentSessionKeys);
+
+    // stoppedSessionKeys intentionally empty — grace period handles stops inline.
+    // processPollResults still processes newSessions and updatedSessions normally.
+    return { success: true, newSessions, stoppedSessionKeys: [], updatedSessions };
   } catch (error) {
     console.error(`Error polling server ${server.name}:`, error);
     return { success: false, newSessions: [], stoppedSessionKeys: [], updatedSessions: [] };
@@ -1145,6 +1253,7 @@ export function stopPoller(): void {
     unregisterService('stale-sweep');
     console.log('Stale session sweep stopped');
   }
+  missedPollTracking.clear();
 }
 
 /**
