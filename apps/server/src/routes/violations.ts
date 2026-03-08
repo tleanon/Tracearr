@@ -974,8 +974,9 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     const rule = ruleRows[0];
-    if (rule?.actions && Array.isArray(rule.actions)) {
-      for (const action of rule.actions) {
+    const ruleActions = rule?.actions?.actions;
+    if (ruleActions && Array.isArray(ruleActions)) {
+      for (const action of ruleActions) {
         if (action.type === 'adjust_trust' && typeof action.amount === 'number') {
           // Sum up all trust adjustments made by this rule
           trustAdjustmentToReverse += Number(action.amount);
@@ -1204,8 +1205,9 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
     const ruleAdjustments = new Map<string, number>();
     for (const rule of ruleRows) {
       let adjustment = 0;
-      if (rule.actions && Array.isArray(rule.actions)) {
-        for (const action of rule.actions) {
+      const ruleActions = rule.actions?.actions;
+      if (ruleActions && Array.isArray(ruleActions)) {
+        for (const action of ruleActions) {
           if (action.type === 'adjust_trust' && typeof action.amount === 'number') {
             adjustment += Number(action.amount);
           }

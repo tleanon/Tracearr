@@ -775,7 +775,7 @@ describe('Violation Routes', () => {
                 limit: vi.fn().mockResolvedValue([
                   {
                     id: ruleId,
-                    actions: [{ type: 'adjust_trust', amount: -20 }],
+                    actions: { actions: [{ type: 'adjust_trust', amount: -20 }] },
                   },
                 ]),
               }),
