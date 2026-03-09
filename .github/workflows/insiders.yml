@@ -1,0 +1,438 @@
+name: Insiders
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        default: 'main'
+        type: string
+
+concurrency:
+  group: insiders
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/tracearr
+  HUSKY: 0
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Cache Turborepo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [unit, services, routes, security]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Cache Turborepo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build dependencies (shared, test-utils)
+        run: pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/test-utils
+
+      - name: Run ${{ matrix.group }} tests
+        run: pnpm --filter @tracearr/server test:${{ matrix.group }}
+
+  test-integration:
+    name: Test (integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TEST_DATABASE_URL: postgresql://test:test@localhost:5433/tracearr_test
+      TEST_REDIS_URL: redis://localhost:6380
+
+    services:
+      timescale:
+        image: timescale/timescaledb:2.25.0-pg16
+        ports:
+          - 5433:5432
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: tracearr_test
+          TIMESCALEDB_TELEMETRY: off
+        options: >-
+          --health-cmd "pg_isready -U test -d tracearr_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Cache Turborepo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build dependencies (shared, test-utils)
+        run: pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/test-utils
+
+      - name: Run integration tests
+        run: pnpm --filter @tracearr/server test:integration
+
+  build-docker:
+    name: Build Docker (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    needs: [lint-and-typecheck, test, test-integration]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Update GeoIP database
+        run: |
+          echo "Downloading latest GeoLite2-City database..."
+          curl -sSL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=${{ secrets.MAXMIND_LICENSE_KEY }}&suffix=tar.gz" \
+            -o /tmp/geolite2-city.tar.gz && \
+          tar -xzf /tmp/geolite2-city.tar.gz -C /tmp && \
+          mv /tmp/GeoLite2-City_*/GeoLite2-City.mmdb data/GeoLite2-City.mmdb && \
+          echo "Successfully updated GeoLite2-City.mmdb" || \
+          echo "Download failed, using existing database as fallback"
+          echo "Downloading latest GeoLite2-ASN database..."
+          curl -sSL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key=${{ secrets.MAXMIND_LICENSE_KEY }}&suffix=tar.gz" \
+            -o /tmp/geolite2-asn.tar.gz && \
+          tar -xzf /tmp/geolite2-asn.tar.gz -C /tmp && \
+          mv /tmp/GeoLite2-ASN_*/GeoLite2-ASN.mmdb data/GeoLite2-ASN.mmdb && \
+          echo "Successfully updated GeoLite2-ASN.mmdb" || \
+          echo "Download failed, using existing database as fallback"
+          ls -la data/GeoLite2-City.mmdb data/GeoLite2-ASN.mmdb
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=insiders-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=insiders-${{ matrix.arch }}
+          build-args: |
+            APP_VERSION=insiders
+            APP_TAG=insiders
+            APP_COMMIT=${{ github.sha }}
+            APP_BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            CACHE_BUST=${{ github.sha }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v6
+        with:
+          name: digests-docker-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-docker:
+    name: Merge Docker Manifest
+    runs-on: ubuntu-latest
+    needs: [build-docker]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v7
+        with:
+          path: /tmp/digests
+          pattern: digests-docker-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          if [ -z "$(ls -A .)" ]; then
+            echo "Error: No digests found!"
+            exit 1
+          fi
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:insiders \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:insiders
+
+  build-supervised:
+    name: Build Supervised (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    needs: [lint-and-typecheck, test, test-integration]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Update GeoIP database
+        run: |
+          echo "Downloading latest GeoLite2-City database..."
+          curl -sSL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=${{ secrets.MAXMIND_LICENSE_KEY }}&suffix=tar.gz" \
+            -o /tmp/geolite2-city.tar.gz && \
+          tar -xzf /tmp/geolite2-city.tar.gz -C /tmp && \
+          mv /tmp/GeoLite2-City_*/GeoLite2-City.mmdb data/GeoLite2-City.mmdb && \
+          echo "Successfully updated GeoLite2-City.mmdb" || \
+          echo "Download failed, using existing database as fallback"
+          echo "Downloading latest GeoLite2-ASN database..."
+          curl -sSL "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key=${{ secrets.MAXMIND_LICENSE_KEY }}&suffix=tar.gz" \
+            -o /tmp/geolite2-asn.tar.gz && \
+          tar -xzf /tmp/geolite2-asn.tar.gz -C /tmp && \
+          mv /tmp/GeoLite2-ASN_*/GeoLite2-ASN.mmdb data/GeoLite2-ASN.mmdb && \
+          echo "Successfully updated GeoLite2-ASN.mmdb" || \
+          echo "Download failed, using existing database as fallback"
+          ls -la data/GeoLite2-City.mmdb data/GeoLite2-ASN.mmdb
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile.supervised
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=insiders-supervised-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=insiders-supervised-${{ matrix.arch }}
+          build-args: |
+            APP_VERSION=insiders
+            APP_TAG=supervised-insiders
+            APP_COMMIT=${{ github.sha }}
+            APP_BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            CACHE_BUST=${{ github.sha }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v6
+        with:
+          name: digests-supervised-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-supervised:
+    name: Merge Supervised Manifest
+    runs-on: ubuntu-latest
+    needs: [build-supervised]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v7
+        with:
+          path: /tmp/digests
+          pattern: digests-supervised-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          if [ -z "$(ls -A .)" ]; then
+            echo "Error: No digests found!"
+            exit 1
+          fi
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:supervised-insiders \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:supervised-insiders
