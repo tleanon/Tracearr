@@ -48,6 +48,19 @@ import { mobileRoutes } from '../mobile.js';
 import { terminateSession } from '../../services/termination.js';
 
 // Mock Redis
+// Chainable multi mock for Redis transactions
+function createMultiMock() {
+  const chain = {
+    del: vi.fn().mockReturnThis(),
+    setex: vi.fn().mockReturnThis(),
+    exec: vi.fn().mockResolvedValue([
+      [null, 1],
+      [null, 'OK'],
+    ]),
+  };
+  return chain;
+}
+
 const mockRedis = {
   get: vi.fn(),
   set: vi.fn(),
@@ -55,6 +68,7 @@ const mockRedis = {
   del: vi.fn(),
   eval: vi.fn(),
   ttl: vi.fn(),
+  multi: vi.fn(() => createMultiMock()),
 };
 
 // Mock JWT
@@ -236,6 +250,7 @@ describe('Mobile Routes', () => {
     mockRedis.del.mockReset();
     mockRedis.eval.mockReset();
     mockRedis.ttl.mockReset();
+    mockRedis.multi.mockReset().mockImplementation(() => createMultiMock());
     mockJwt.sign.mockReset();
   });
 

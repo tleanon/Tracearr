@@ -848,13 +848,16 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       })
       .where(eq(mobileSessions.id, sessionRow[0]!.id));
 
-    // Update Redis
-    await app.redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash));
-    await app.redis.setex(
-      REDIS_KEYS.MOBILE_REFRESH_TOKEN(newRefreshTokenHash),
-      MOBILE_REFRESH_TTL,
-      JSON.stringify({ userId, deviceId })
-    );
+    // Atomically rotate refresh token in Redis (delete old + store new in one transaction)
+    await app.redis
+      .multi()
+      .del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash))
+      .setex(
+        REDIS_KEYS.MOBILE_REFRESH_TOKEN(newRefreshTokenHash),
+        MOBILE_REFRESH_TTL,
+        JSON.stringify({ userId, deviceId })
+      )
+      .exec();
 
     return {
       accessToken,
