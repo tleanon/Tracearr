@@ -866,7 +866,6 @@ describe('LibrarySyncService', () => {
         const chain = {
           from: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
-            // Call 2: rebuildSnapshotFromDb queries library_items
             if (selectCallCount === 2) {
               const itemsResult = Promise.resolve([
                 createMockDbItem({
@@ -899,7 +898,6 @@ describe('LibrarySyncService', () => {
         return chain as never;
       });
 
-      // Insert mock: createSnapshot inserts into library_snapshots
       const insertChain = {
         values: vi.fn().mockReturnThis(),
         onConflictDoUpdate: vi.fn().mockReturnThis(),
@@ -924,7 +922,6 @@ describe('LibrarySyncService', () => {
       expect(client.getLibraryLeavesSince).toHaveBeenCalled();
       expect(results[0]!.itemsAdded).toBe(1);
       expect(results[0]!.itemsRemoved).toBe(0);
-      // Incremental syncs now rebuild snapshots from DB items
       expect(results[0]!.snapshotId).toBe(snapshotId);
     });
 

@@ -33,6 +33,7 @@ vi.mock('../../utils/crypto.js', () => ({
 vi.mock('../../services/mediaServer/index.js', () => ({
   PlexClient: {
     verifyServerAdmin: vi.fn(),
+    getAccountInfo: vi.fn(),
     AdminVerifyError: {
       CONNECTION_FAILED: 'CONNECTION_FAILED',
       NOT_ADMIN: 'NOT_ADMIN',
@@ -40,6 +41,10 @@ vi.mock('../../services/mediaServer/index.js', () => ({
   },
   JellyfinClient: {
     verifyServerAdmin: vi.fn(),
+    AdminVerifyError: {
+      CONNECTION_FAILED: 'CONNECTION_FAILED',
+      NOT_ADMIN: 'NOT_ADMIN',
+    },
   },
   EmbyClient: {
     verifyServerAdmin: vi.fn(),
@@ -48,6 +53,16 @@ vi.mock('../../services/mediaServer/index.js', () => ({
 
 vi.mock('../../services/sync.js', () => ({
   syncServer: vi.fn(),
+}));
+
+vi.mock('../../services/cache.js', () => ({
+  getCacheService: vi.fn().mockReturnValue({
+    invalidateServerStats: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
+vi.mock('../../jobs/librarySyncQueue.js', () => ({
+  enqueueLibrarySync: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Import mocked modules
@@ -180,6 +195,7 @@ describe('Server Routes', () => {
           type: mockServer.type,
           url: mockServer.url,
           displayOrder: 0,
+          color: '#4B8BFF',
           createdAt: mockServer.createdAt,
           updatedAt: mockServer.updatedAt,
         },
@@ -213,6 +229,7 @@ describe('Server Routes', () => {
           type: 'jellyfin',
           url: 'http://localhost:8096',
           displayOrder: 0,
+          color: '#9B59B6',
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -266,17 +283,36 @@ describe('Server Routes', () => {
     it('creates a new Plex server for owner', async () => {
       app = await buildTestApp(ownerUser);
 
-      // No existing server
-      mockDbSelectLimit([]);
+      vi.mocked(PlexClient.getAccountInfo).mockResolvedValue({
+        id: 'plex-account-123',
+        username: 'admin',
+        isAdmin: true,
+      } as never);
 
       const newServer = {
         id: randomUUID(),
         name: 'New Plex',
         type: 'plex',
         url: 'http://plex.local:32400',
+        color: '#4B8BFF',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
+
+      let selectCall = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCall++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([]),
+        };
+        if (selectCall === 3) {
+          chain.from = vi.fn().mockResolvedValue([]);
+        }
+        return chain as never;
+      });
+
       mockDbInsert([newServer]);
 
       const response = await app.inject({
@@ -303,16 +339,30 @@ describe('Server Routes', () => {
     it('creates a new Jellyfin server for owner', async () => {
       app = await buildTestApp(ownerUser);
 
-      mockDbSelectLimit([]);
-
       const newServer = {
         id: randomUUID(),
         name: 'New Jellyfin',
         type: 'jellyfin',
         url: 'http://jellyfin.local:8096',
+        color: '#9B59B6',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
+
+      let selectCall = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCall++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([]),
+        };
+        if (selectCall === 2) {
+          chain.from = vi.fn().mockResolvedValue([]);
+        }
+        return chain as never;
+      });
+
       mockDbInsert([newServer]);
 
       const response = await app.inject({
@@ -336,16 +386,30 @@ describe('Server Routes', () => {
     it('creates a new Emby server for owner', async () => {
       app = await buildTestApp(ownerUser);
 
-      mockDbSelectLimit([]);
-
       const newServer = {
         id: randomUUID(),
         name: 'New Emby',
         type: 'emby',
         url: 'http://emby.local:8096',
+        color: '#2ECC71',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
+
+      let selectCall = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCall++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([]),
+        };
+        if (selectCall === 2) {
+          chain.from = vi.fn().mockResolvedValue([]);
+        }
+        return chain as never;
+      });
+
       mockDbInsert([newServer]);
 
       const response = await app.inject({
