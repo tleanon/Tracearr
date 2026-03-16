@@ -273,6 +273,7 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
         (SELECT MIN(created_at)::date FROM library_items
          WHERE ${VALID_LIBRARY_ITEM_CONDITION}) AS earliest_item,
         (SELECT MIN(day)::date FROM library_stats_daily) AS earliest_aggregate,
+        (SELECT MAX(day)::date FROM library_stats_daily) AS latest_aggregate,
         (SELECT COUNT(*) FROM library_items) AS item_count,
         (SELECT COUNT(DISTINCT day) FROM library_stats_daily) AS aggregate_days
     `);
@@ -280,6 +281,7 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
     const row = result.rows[0] as {
       earliest_item: string | null;
       earliest_aggregate: string | null;
+      latest_aggregate: string | null;
       item_count: string;
       aggregate_days: string;
     };
@@ -292,17 +294,28 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
       return;
     }
 
-    // No aggregate data yet, or aggregate starts after items - need backfill
+    // Detect mid-timeline gaps: aggregate exists but hasn't been updated in 2+ days.
+    // This catches the incremental sync snapshot bug where syncs ran but no snapshots
+    // were created, leaving a hole in the growth timeline.
+    const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+    const isStale =
+      aggregateDays > 0 &&
+      row.latest_aggregate &&
+      new Date(row.latest_aggregate).getTime() < Date.now() - TWO_DAYS_MS;
+
+    // No aggregate data yet, aggregate starts after items, or mid-timeline gap
     const needsBackfill =
       aggregateDays === 0 ||
       (row.earliest_item &&
         row.earliest_aggregate &&
-        new Date(row.earliest_item) < new Date(row.earliest_aggregate));
+        new Date(row.earliest_item) < new Date(row.earliest_aggregate)) ||
+      isStale;
 
     if (needsBackfill) {
-      console.log(
-        `[LibrarySync] Snapshot backfill needed: items from ${row.earliest_item}, aggregate from ${row.earliest_aggregate || 'none'}`
-      );
+      const reason = isStale
+        ? `stale aggregate (last: ${row.latest_aggregate})`
+        : `items from ${row.earliest_item}, aggregate from ${row.earliest_aggregate || 'none'}`;
+      console.log(`[LibrarySync] Snapshot backfill needed: ${reason}`);
 
       // Trigger backfill job (non-blocking, will be queued)
       // Use a system user ID since this is automated

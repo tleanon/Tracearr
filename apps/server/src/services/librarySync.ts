@@ -35,6 +35,14 @@ export function initLibrarySyncRedis(redis: Redis): void {
   redisClient = redis;
 }
 
+/** Fields createSnapshot needs — works with both API items and DB rows */
+interface SnapshotItemInput {
+  fileSize?: number | null;
+  videoResolution?: string | null;
+  videoCodec?: string | null;
+  mediaType: string;
+}
+
 /**
  * Result of syncing a single library
  */
@@ -333,6 +341,20 @@ export class LibrarySyncService {
           }
         }
 
+        // Snapshot rebuild is local DB work — don't let failures trigger a full scan
+        let snapshot: { id: string } | null = null;
+        try {
+          const heavyOps = await getHeavyOpsStatus();
+          if (!heavyOps) {
+            snapshot = await this.rebuildSnapshotFromDb(serverId, libraryId);
+          }
+        } catch (snapshotError) {
+          console.warn(
+            `[LibrarySync] Failed to rebuild snapshot for ${libraryName} (items were upserted OK):`,
+            snapshotError
+          );
+        }
+
         await this.saveSyncState(serverId, libraryId, totalCount);
 
         return {
@@ -342,7 +364,7 @@ export class LibrarySyncService {
           itemsProcessed: allItems.length,
           itemsAdded: allItems.length,
           itemsRemoved: 0,
-          snapshotId: null,
+          snapshotId: snapshot?.id ?? null,
         };
       } catch (error) {
         console.warn(
@@ -787,7 +809,7 @@ export class LibrarySyncService {
   async createSnapshot(
     serverId: string,
     libraryId: string,
-    items: MediaLibraryItem[]
+    items: SnapshotItemInput[]
   ): Promise<{ id: string } | null> {
     // Don't create snapshots for empty libraries
     if (items.length === 0) {
@@ -945,6 +967,28 @@ export class LibrarySyncService {
       .returning({ id: librarySnapshots.id });
 
     return { id: snapshot!.id };
+  }
+
+  /**
+   * Rebuild a snapshot from current library_items in the database.
+   * Used after incremental syncs that added items — the DB has accurate
+   * totals after upserts, so we aggregate directly from it.
+   */
+  private async rebuildSnapshotFromDb(
+    serverId: string,
+    libraryId: string
+  ): Promise<{ id: string } | null> {
+    const items = await db
+      .select({
+        fileSize: libraryItems.fileSize,
+        videoResolution: libraryItems.videoResolution,
+        videoCodec: libraryItems.videoCodec,
+        mediaType: libraryItems.mediaType,
+      })
+      .from(libraryItems)
+      .where(and(eq(libraryItems.serverId, serverId), eq(libraryItems.libraryId, libraryId)));
+
+    return this.createSnapshot(serverId, libraryId, items);
   }
 
   /**

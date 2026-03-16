@@ -849,6 +849,7 @@ describe('LibrarySyncService', () => {
     it('does incremental scan when conditions are met', async () => {
       const mockServer = createMockServer({ id: serverId });
       const newItem = createMockLibraryItem({ ratingKey: 'new-item' });
+      const snapshotId = randomUUID();
       const lastSyncedAt = new Date(Date.now() - 60_000);
       const mockRedis = createMockRedis({
         get: vi
@@ -858,8 +859,53 @@ describe('LibrarySyncService', () => {
       });
       initLibrarySyncRedis(mockRedis);
 
-      setupSelectForIncrementalTest(mockServer);
-      mockInsertChain([{ id: randomUUID() }]);
+      // Select mock: getServer → items from DB → no existing snapshot today
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockImplementation(() => {
+            // Call 2: rebuildSnapshotFromDb queries library_items
+            if (selectCallCount === 2) {
+              const itemsResult = Promise.resolve([
+                createMockDbItem({
+                  fileSize: 5_000_000_000,
+                  videoResolution: '1080p',
+                  videoCodec: 'h264',
+                  mediaType: 'movie',
+                }),
+              ]);
+              (itemsResult as typeof itemsResult & { limit: typeof vi.fn }).limit = vi
+                .fn()
+                .mockResolvedValue([]);
+              return itemsResult;
+            }
+            const whereResult = Promise.resolve([]);
+            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
+              .fn()
+              .mockImplementation(() => {
+                if (selectCallCount === 1) return Promise.resolve([mockServer]);
+                return Promise.resolve([]);
+              });
+            return whereResult;
+          }),
+          limit: vi.fn().mockImplementation(() => {
+            if (selectCallCount === 1) return Promise.resolve([mockServer]);
+            return Promise.resolve([]);
+          }),
+          returning: vi.fn().mockResolvedValue([]),
+        };
+        return chain as never;
+      });
+
+      // Insert mock: createSnapshot inserts into library_snapshots
+      const insertChain = {
+        values: vi.fn().mockReturnThis(),
+        onConflictDoUpdate: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([{ id: snapshotId }]),
+      };
+      vi.mocked(db.insert).mockReturnValue(insertChain as never);
       mockDeleteChain();
       mockTransaction();
 
@@ -878,7 +924,8 @@ describe('LibrarySyncService', () => {
       expect(client.getLibraryLeavesSince).toHaveBeenCalled();
       expect(results[0]!.itemsAdded).toBe(1);
       expect(results[0]!.itemsRemoved).toBe(0);
-      expect(results[0]!.snapshotId).toBeNull();
+      // Incremental syncs now rebuild snapshots from DB items
+      expect(results[0]!.snapshotId).toBe(snapshotId);
     });
 
     it('skips when incremental finds 0 items and count matches', async () => {
