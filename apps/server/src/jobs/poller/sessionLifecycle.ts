@@ -19,7 +19,11 @@ import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, violations } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
-import { evaluateRulesAsync, hasTranscodeConditions } from '../../services/rules/engine.js';
+import {
+  evaluateRulesAsync,
+  hasTranscodeConditions,
+  hasPauseConditions,
+} from '../../services/rules/engine.js';
 import { executeActions, type ActionResult } from '../../services/rules/executors/index.js';
 import { resolveTargetSessions } from '../../services/rules/executors/targeting.js';
 import type { EvaluationContext, EvaluationResult } from '../../services/rules/types.js';
@@ -42,6 +46,7 @@ import type {
   SessionStopInput,
   SessionStopResult,
   TranscodeReEvalInput,
+  PauseReEvalInput,
 } from './types.js';
 import type { ViolationInsertResult } from './violations.js';
 
@@ -1496,18 +1501,228 @@ export async function reEvaluateRulesOnTranscodeChange(
       console.log(
         `[rules] Transcode re-eval: rule "${rule.name}" matched session ${existingSession.id}`
       );
+
+      // Execute actions (e.g., kill_stream, send_notification) only when
+      // a new violation was created. Gating here prevents actions from firing
+      // on subsequent re-evaluations where the dedup check returns null.
+      if (result.actions.length > 0) {
+        const context: EvaluationContext = { ...baseContext, rule };
+        const actionResults: ActionResult[] = await executeActions(context, result.actions);
+        await storeActionResults(violationResult.id, result.ruleId, actionResults);
+      }
     }
+  }
 
-    // Execute actions (e.g., kill_stream, send_notification)
-    // Runs outside the transaction - side effects shouldn't block violation commit,
-    // and the advisory lock prevents duplicate action execution for the same rule+session.
-    if (result.actions.length > 0) {
-      const context: EvaluationContext = { ...baseContext, rule };
-      const actionResults: ActionResult[] = await executeActions(context, result.actions);
+  return createdViolations;
+}
 
-      const violationId =
-        createdViolations.find((v) => v.rule.id === rule.id)?.violation.id ?? null;
-      await storeActionResults(violationId, result.ruleId, actionResults);
+/**
+ * Re-evaluate V2 rules that have pause-related conditions for a paused session.
+ *
+ * Only rules containing `current_pause_minutes` or `total_pause_minutes` conditions
+ * are evaluated to minimize overhead.
+ */
+export async function reEvaluateRulesOnPauseState(
+  input: PauseReEvalInput
+): Promise<ViolationInsertResult[]> {
+  const {
+    existingSession,
+    processed,
+    pauseData,
+    server,
+    serverUser,
+    activeRulesV2,
+    activeSessions,
+    recentSessions,
+  } = input;
+
+  // Filter to only rules that have pause-related conditions
+  const pauseRules = activeRulesV2.filter(hasPauseConditions);
+  if (pauseRules.length === 0) return [];
+
+  // Build Session object with updated pause fields
+  const session: Session = {
+    id: existingSession.id,
+    serverId: existingSession.serverId,
+    serverUserId: existingSession.serverUserId,
+    sessionKey: existingSession.sessionKey,
+    externalSessionId: existingSession.externalSessionId,
+    state: processed.state,
+    mediaType: processed.mediaType,
+    mediaTitle: processed.mediaTitle,
+    grandparentTitle: processed.grandparentTitle || null,
+    seasonNumber: processed.seasonNumber || null,
+    episodeNumber: processed.episodeNumber || null,
+    year: processed.year || null,
+    thumbPath: processed.thumbPath || null,
+    ratingKey: existingSession.ratingKey,
+    startedAt: existingSession.startedAt,
+    stoppedAt: null,
+    durationMs: null,
+    totalDurationMs: processed.totalDurationMs || null,
+    progressMs: processed.progressMs || null,
+    lastPausedAt: pauseData.lastPausedAt,
+    pausedDurationMs: pauseData.pausedDurationMs,
+    referenceId: existingSession.referenceId,
+    watched: existingSession.watched,
+    ipAddress: existingSession.ipAddress,
+    geoCity: existingSession.geoCity,
+    geoRegion: existingSession.geoRegion,
+    geoCountry: existingSession.geoCountry,
+    geoContinent: existingSession.geoContinent,
+    geoPostal: existingSession.geoPostal,
+    geoLat: existingSession.geoLat,
+    geoLon: existingSession.geoLon,
+    geoAsnNumber: existingSession.geoAsnNumber,
+    geoAsnOrganization: existingSession.geoAsnOrganization,
+    playerName: processed.playerName,
+    deviceId: processed.deviceId || null,
+    product: processed.product || null,
+    device: processed.device || null,
+    platform: processed.platform,
+    quality: processed.quality,
+    isTranscode: processed.isTranscode,
+    videoDecision: processed.videoDecision,
+    audioDecision: processed.audioDecision,
+    bitrate: processed.bitrate,
+    ...pickStreamDetailFields(processed),
+    channelTitle: existingSession.channelTitle,
+    channelIdentifier: existingSession.channelIdentifier,
+    channelThumb: existingSession.channelThumb,
+    artistName: existingSession.artistName,
+    albumName: existingSession.albumName,
+    trackNumber: existingSession.trackNumber,
+    discNumber: existingSession.discNumber,
+  };
+
+  const serverObj: Server = {
+    id: server.id,
+    name: server.name,
+    type: server.type as Server['type'],
+    url: '',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const serverUserObj: ServerUser = {
+    id: serverUser.id,
+    userId: '',
+    serverId: server.id,
+    externalId: '',
+    username: serverUser.username,
+    email: null,
+    thumbUrl: serverUser.thumbUrl,
+    isServerAdmin: false,
+    trustScore: serverUser.trustScore,
+    sessionCount: serverUser.sessionCount,
+    joinedAt: null,
+    lastActivityAt: serverUser.lastActivityAt,
+    createdAt: serverUser.createdAt,
+    updatedAt: new Date(),
+    identityName: serverUser.identityName,
+  };
+
+  const baseContext: Omit<EvaluationContext, 'rule'> = {
+    session,
+    serverUser: serverUserObj,
+    server: serverObj,
+    activeSessions,
+    recentSessions,
+  };
+
+  // Evaluate only pause-related rules
+  const ruleResults = await evaluateRulesAsync(baseContext, pauseRules);
+
+  const createdViolations: ViolationInsertResult[] = [];
+
+  for (const result of ruleResults) {
+    if (!result.matched) continue;
+
+    const rule = pauseRules.find((r) => r.id === result.ruleId);
+    if (!rule) continue;
+
+    // Every rule match auto-creates a violation. Severity from rule.
+    const severity = rule.severity ?? 'warning';
+
+    const violationResult = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${existingSession.id} || '::' || ${rule.id}))`
+      );
+
+      // Dedup check — prevent duplicate violation for same session+rule
+      const existing = await tx
+        .select({ id: violations.id })
+        .from(violations)
+        .where(
+          and(
+            eq(violations.ruleId, rule.id),
+            eq(violations.sessionId, existingSession.id),
+            isNull(violations.acknowledgedAt)
+          )
+        )
+        .limit(1);
+
+      if (existing[0]) return null;
+
+      // Collect related session IDs from evidence
+      const allRelatedSessionIds = new Set<string>();
+      for (const group of result.evidence ?? []) {
+        for (const cond of group.conditions) {
+          for (const id of cond.relatedSessionIds ?? []) {
+            allRelatedSessionIds.add(id);
+          }
+        }
+      }
+
+      const insertedViolations = await tx
+        .insert(violations)
+        .values({
+          ruleId: rule.id,
+          serverUserId: serverUser.id,
+          sessionId: existingSession.id,
+          severity,
+          ruleType: null,
+          data: {
+            evidence: result.evidence,
+            relatedSessionIds: Array.from(allRelatedSessionIds),
+            ruleName: rule.name,
+            matchedGroups: result.matchedGroups,
+            sessionKey: session.sessionKey,
+            mediaTitle: session.mediaTitle,
+            ipAddress: session.ipAddress,
+            pauseReEval: true,
+          },
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      const violation = insertedViolations[0];
+      if (!violation) return null;
+
+      return violation;
+    });
+
+    if (violationResult) {
+      const ruleInfo = {
+        id: rule.id,
+        name: rule.name,
+        type: null,
+      };
+
+      createdViolations.push({ violation: violationResult, rule: ruleInfo });
+
+      console.log(
+        `[rules] Pause re-eval: rule "${rule.name}" matched session ${existingSession.id}`
+      );
+
+      // Execute actions (e.g., kill_stream, send_notification) only when
+      // a new violation was created. The dedup check returns null on subsequent
+      // polls — gating here prevents kill_stream from firing every poll cycle.
+      if (result.actions.length > 0) {
+        const context: EvaluationContext = { ...baseContext, rule };
+        const actionResults: ActionResult[] = await executeActions(context, result.actions);
+        await storeActionResults(violationResult.id, result.ruleId, actionResults);
+      }
     }
   }
 

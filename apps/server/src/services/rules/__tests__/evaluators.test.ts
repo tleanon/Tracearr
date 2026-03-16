@@ -980,6 +980,190 @@ describe('Session Behavior Evaluators', () => {
       ).toBe(true);
     });
   });
+
+  describe('current_pause_minutes', () => {
+    it('returns true when session paused longer than threshold', () => {
+      const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
+      const session = createMockSession({
+        state: 'paused',
+        lastPausedAt: twentyMinutesAgo,
+        pausedDurationMs: 0,
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.current_pause_minutes;
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'current_pause_minutes', operator: 'gte', value: 15 })
+          )
+        )
+      ).toBe(true);
+    });
+
+    it('returns false when session paused less than threshold', () => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const session = createMockSession({
+        state: 'paused',
+        lastPausedAt: fiveMinutesAgo,
+        pausedDurationMs: 0,
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.current_pause_minutes;
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'current_pause_minutes', operator: 'gte', value: 15 })
+          )
+        )
+      ).toBe(false);
+    });
+
+    it('returns false when session is not paused', () => {
+      const session = createMockSession({
+        state: 'playing',
+        lastPausedAt: null,
+        pausedDurationMs: 300000, // 5 min of previous pause time
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.current_pause_minutes;
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'current_pause_minutes', operator: 'gte', value: 1 })
+          )
+        )
+      ).toBe(false);
+    });
+
+    it('supports gt operator for strict comparison', () => {
+      // Use fake timers to freeze Date.now() for exact boundary testing
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2025-06-01T12:00:00.000Z'));
+
+      const fifteenMinutesAgo = new Date('2025-06-01T11:45:00.000Z');
+      const session = createMockSession({
+        state: 'paused',
+        lastPausedAt: fifteenMinutesAgo,
+        pausedDurationMs: 0,
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.current_pause_minutes;
+      // gte should be true at exactly 15 minutes
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'current_pause_minutes', operator: 'gte', value: 15 })
+          )
+        )
+      ).toBe(true);
+      // gt should be false at exactly 15 minutes (need to be strictly greater)
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'current_pause_minutes', operator: 'gt', value: 15 })
+          )
+        )
+      ).toBe(false);
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('total_pause_minutes', () => {
+    it('returns true when accumulated pause exceeds threshold', () => {
+      const session = createMockSession({
+        state: 'playing',
+        lastPausedAt: null,
+        pausedDurationMs: 30 * 60 * 1000, // 30 min accumulated
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.total_pause_minutes;
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'total_pause_minutes', operator: 'gte', value: 25 })
+          )
+        )
+      ).toBe(true);
+    });
+
+    it('includes ongoing pause in total calculation', () => {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const session = createMockSession({
+        state: 'paused',
+        lastPausedAt: tenMinutesAgo,
+        pausedDurationMs: 20 * 60 * 1000, // 20 min accumulated + 10 min ongoing = 30 min
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.total_pause_minutes;
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'total_pause_minutes', operator: 'gte', value: 30 })
+          )
+        )
+      ).toBe(true);
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'total_pause_minutes', operator: 'gte', value: 31 })
+          )
+        )
+      ).toBe(false);
+    });
+
+    it('returns false when total pause is below threshold', () => {
+      const session = createMockSession({
+        state: 'playing',
+        lastPausedAt: null,
+        pausedDurationMs: 5 * 60 * 1000, // 5 min
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.total_pause_minutes;
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'total_pause_minutes', operator: 'gte', value: 15 })
+          )
+        )
+      ).toBe(false);
+    });
+
+    it('handles zero pause duration', () => {
+      const session = createMockSession({
+        state: 'playing',
+        lastPausedAt: null,
+        pausedDurationMs: 0,
+      });
+      const ctx = createTestContext({ session });
+
+      const evaluator = evaluatorRegistry.total_pause_minutes;
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({ field: 'total_pause_minutes', operator: 'eq', value: 0 })
+          )
+        )
+      ).toBe(true);
+    });
+  });
 });
 
 describe('Stream Quality Evaluators', () => {
@@ -1877,6 +2061,8 @@ describe('Evaluator Registry', () => {
       'unique_ips_in_window',
       'unique_devices_in_window',
       'inactive_days',
+      'current_pause_minutes',
+      'total_pause_minutes',
       'source_resolution',
       'output_resolution',
       'is_transcoding',

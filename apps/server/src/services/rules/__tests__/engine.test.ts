@@ -7,6 +7,7 @@ import {
   evaluateRuleAsync,
   evaluateRulesAsync,
   hasTranscodeConditions,
+  hasPauseConditions,
 } from '../engine.js';
 
 // Mock geoipService
@@ -803,5 +804,69 @@ describe('hasTranscodeConditions', () => {
     });
 
     expect(hasTranscodeConditions(rule)).toBe(false);
+  });
+});
+
+describe('hasPauseConditions', () => {
+  it('returns true for rule with current_pause_minutes condition', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [{ conditions: [{ field: 'current_pause_minutes', operator: 'gte', value: 15 }] }],
+      },
+    });
+
+    expect(hasPauseConditions(rule)).toBe(true);
+  });
+
+  it('returns true for rule with total_pause_minutes condition', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [{ conditions: [{ field: 'total_pause_minutes', operator: 'gte', value: 60 }] }],
+      },
+    });
+
+    expect(hasPauseConditions(rule)).toBe(true);
+  });
+
+  it('returns false for rule with only non-pause conditions', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [
+          { conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 1 }] },
+          { conditions: [{ field: 'trust_score', operator: 'lt', value: 50 }] },
+        ],
+      },
+    });
+
+    expect(hasPauseConditions(rule)).toBe(false);
+  });
+
+  it('returns true when pause condition is mixed with non-pause conditions', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [
+          { conditions: [{ field: 'current_pause_minutes', operator: 'gte', value: 15 }] },
+          { conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 1 }] },
+        ],
+      },
+    });
+
+    expect(hasPauseConditions(rule)).toBe(true);
+  });
+
+  it('returns false for rule with null conditions', () => {
+    const rule = createMockRule({
+      conditions: null as unknown as { groups: [] },
+    });
+
+    expect(hasPauseConditions(rule)).toBe(false);
+  });
+
+  it('returns false for rule with empty groups', () => {
+    const rule = createMockRule({
+      conditions: { groups: [] },
+    });
+
+    expect(hasPauseConditions(rule)).toBe(false);
   });
 });

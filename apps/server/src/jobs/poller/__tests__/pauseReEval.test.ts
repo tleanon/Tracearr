@@ -1,24 +1,23 @@
 /**
- * Transcode Re-evaluation Tests
+ * Pause Re-evaluation Tests
  *
- * Tests for reEvaluateRulesOnTranscodeChange:
- * - Only transcode-related rules are evaluated (no false positives)
- * - Violations are created when transcode rules match
- * - Application-level dedup prevents duplicate violations
- * - Trust score penalties are applied
- * - Side effect actions (kill_stream) are executed
- * - Non-transcode rules (concurrent_streams, etc.) are skipped
+ * Tests for reEvaluateRulesOnPauseState:
+ * - Only pause-related rules are evaluated (no false positives)
+ * - Violations are created when pause rules match
+ * - Application-level dedup prevents duplicate violations (critical: runs every poll cycle)
+ * - Side effects are gated on new violation creation (not fired on dedup)
+ * - Fresh pauseData is used instead of stale existingSession values
+ * - Non-pause rules (concurrent_streams, transcode, etc.) are skipped
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { RuleV2, Session } from '@tracearr/shared';
-import type { TranscodeReEvalInput } from '../types.js';
+import type { PauseReEvalInput } from '../types.js';
 
 // ============================================================================
 // Module Mocks
 // ============================================================================
 
-// Mock DB client - the function uses db.transaction() with tx inside
 const mockExecute = vi.fn();
 const mockTxSelect = vi.fn();
 const mockTxInsert = vi.fn();
@@ -38,7 +37,6 @@ vi.mock('../../../db/client.js', () => ({
   },
 }));
 
-// Mock schema tables - use importOriginal to preserve transitive exports
 vi.mock('../../../db/schema.js', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
@@ -46,7 +44,6 @@ vi.mock('../../../db/schema.js', async (importOriginal) => {
   };
 });
 
-// Mock rules engine
 const mockEvaluateRulesAsync = vi.fn();
 vi.mock('../../../services/rules/engine.js', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -56,19 +53,16 @@ vi.mock('../../../services/rules/engine.js', async (importOriginal) => {
   };
 });
 
-// Mock executors
 const mockExecuteActions = vi.fn();
 vi.mock('../../../services/rules/executors/index.js', () => ({
   executeActions: (...args: unknown[]) => mockExecuteActions(...args),
 }));
 
-// Mock v2Integration
 const mockStoreActionResults = vi.fn();
 vi.mock('../../../services/rules/v2Integration.js', () => ({
   storeActionResults: (...args: unknown[]) => mockStoreActionResults(...args),
 }));
 
-// Mock logger
 vi.mock('../../../utils/logger.js', () => ({
   pollerLogger: {
     info: vi.fn(),
@@ -84,7 +78,6 @@ vi.mock('../../../utils/logger.js', () => ({
   },
 }));
 
-// Mock geoipService (needed by evaluators)
 vi.mock('../../../services/geoip.js', () => ({
   geoipService: {
     isPrivateIP: (ip: string) =>
@@ -98,14 +91,14 @@ vi.mock('../../../services/geoip.js', () => ({
 
 function createMockExistingSession(
   overrides: Record<string, unknown> = {}
-): TranscodeReEvalInput['existingSession'] {
+): PauseReEvalInput['existingSession'] {
   return {
     id: 'session-1',
     serverId: 'server-1',
     serverUserId: 'user-1',
     sessionKey: 'sk-1',
     externalSessionId: 'ext-1',
-    state: 'playing',
+    state: 'paused',
     mediaType: 'movie',
     mediaTitle: 'Test Movie',
     grandparentTitle: null,
@@ -118,8 +111,8 @@ function createMockExistingSession(
     stoppedAt: null,
     durationMs: null,
     totalDurationMs: 7200000,
-    progressMs: 0,
-    lastPausedAt: null,
+    progressMs: 600000,
+    lastPausedAt: new Date(Date.now() - 20 * 60 * 1000), // 20 minutes ago (stale)
     pausedDurationMs: 0,
     referenceId: null,
     watched: false,
@@ -164,12 +157,12 @@ function createMockExistingSession(
     transcodeInfo: null,
     subtitleInfo: null,
     ...overrides,
-  } as TranscodeReEvalInput['existingSession'];
+  } as PauseReEvalInput['existingSession'];
 }
 
 function createMockProcessedSession(
   overrides: Record<string, unknown> = {}
-): TranscodeReEvalInput['processed'] {
+): PauseReEvalInput['processed'] {
   return {
     sessionKey: 'sk-1',
     ratingKey: 'rk-1',
@@ -196,14 +189,14 @@ function createMockProcessedSession(
     product: 'Plex Web',
     device: 'Chrome',
     platform: 'Web',
-    quality: '4K (H.265) → 1080p (H.264)',
-    isTranscode: true,
-    videoDecision: 'transcode',
+    quality: '1080p',
+    isTranscode: false,
+    videoDecision: 'directplay',
     audioDecision: 'directplay',
-    bitrate: 10000,
-    state: 'playing' as const,
+    bitrate: 20000,
+    state: 'paused' as const,
     totalDurationMs: 7200000,
-    progressMs: 360000,
+    progressMs: 600000,
     sourceVideoCodec: 'hevc',
     sourceAudioCodec: 'ac3',
     sourceAudioChannels: 6,
@@ -211,32 +204,49 @@ function createMockProcessedSession(
     sourceVideoHeight: 2160,
     sourceVideoDetails: null,
     sourceAudioDetails: null,
-    streamVideoCodec: 'h264',
+    streamVideoCodec: null,
     streamAudioCodec: null,
     streamVideoDetails: null,
     streamAudioDetails: null,
     transcodeInfo: null,
     subtitleInfo: null,
     ...overrides,
-  } as TranscodeReEvalInput['processed'];
+  } as PauseReEvalInput['processed'];
 }
 
-function createTranscodeRule(overrides: Partial<RuleV2> = {}): RuleV2 {
+function createPauseRule(overrides: Partial<RuleV2> = {}): RuleV2 {
   return {
-    id: 'rule-transcode-1',
-    name: 'Block 4K Transcoding',
+    id: 'rule-pause-1',
+    name: 'Kill After 15min Pause',
     description: null,
     serverId: null,
-    severity: 'high',
+    severity: 'warning',
     isActive: true,
     conditions: {
-      groups: [
-        { conditions: [{ field: 'is_transcoding', operator: 'eq', value: true }] },
-        { conditions: [{ field: 'source_resolution', operator: 'eq', value: '4K' }] },
-      ],
+      groups: [{ conditions: [{ field: 'current_pause_minutes', operator: 'gte', value: 15 }] }],
     },
     actions: {
       actions: [{ type: 'kill_stream' }],
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+function createTotalPauseRule(overrides: Partial<RuleV2> = {}): RuleV2 {
+  return {
+    id: 'rule-total-pause-1',
+    name: 'Warn After 30min Total Pause',
+    description: null,
+    serverId: null,
+    severity: 'warning',
+    isActive: true,
+    conditions: {
+      groups: [{ conditions: [{ field: 'total_pause_minutes', operator: 'gte', value: 30 }] }],
+    },
+    actions: {
+      actions: [],
     },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -264,10 +274,36 @@ function createConcurrentStreamsRule(overrides: Partial<RuleV2> = {}): RuleV2 {
   };
 }
 
-function createDefaultInput(overrides: Partial<TranscodeReEvalInput> = {}): TranscodeReEvalInput {
+function createTranscodeRule(overrides: Partial<RuleV2> = {}): RuleV2 {
+  return {
+    id: 'rule-transcode-1',
+    name: 'Block 4K Transcoding',
+    description: null,
+    serverId: null,
+    severity: 'high',
+    isActive: true,
+    conditions: {
+      groups: [{ conditions: [{ field: 'is_transcoding', operator: 'eq', value: true }] }],
+    },
+    actions: {
+      actions: [],
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+function createDefaultInput(overrides: Partial<PauseReEvalInput> = {}): PauseReEvalInput {
   return {
     existingSession: createMockExistingSession(),
     processed: createMockProcessedSession(),
+    pauseData: {
+      lastPausedAt: tenMinutesAgo,
+      pausedDurationMs: 0,
+    },
     server: { id: 'server-1', name: 'Test Plex', type: 'plex' },
     serverUser: {
       id: 'user-1',
@@ -279,7 +315,7 @@ function createDefaultInput(overrides: Partial<TranscodeReEvalInput> = {}): Tran
       lastActivityAt: new Date(),
       createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
     },
-    activeRulesV2: [createTranscodeRule(), createConcurrentStreamsRule()],
+    activeRulesV2: [createPauseRule(), createConcurrentStreamsRule()],
     activeSessions: [],
     recentSessions: [],
     ...overrides,
@@ -287,7 +323,6 @@ function createDefaultInput(overrides: Partial<TranscodeReEvalInput> = {}): Tran
 }
 
 function setupDbMockChain() {
-  // Reset all mock chains
   mockTransaction.mockReset();
   mockExecute.mockReset();
   mockTxSelect.mockReset();
@@ -314,10 +349,10 @@ function setupDbMockChain() {
   mockReturning.mockResolvedValue([
     {
       id: 'violation-1',
-      ruleId: 'rule-transcode-1',
+      ruleId: 'rule-pause-1',
       serverUserId: 'user-1',
       sessionId: 'session-1',
-      severity: 'high',
+      severity: 'warning',
       ruleType: null,
       data: {},
       createdAt: new Date(),
@@ -329,10 +364,10 @@ function setupDbMockChain() {
   mockTxUpdate.mockReturnValue({ set: mockSet });
   mockSet.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
 
-  // tx.execute() → advisory lock (no-op in tests)
+  // tx.execute() → advisory lock
   mockExecute.mockResolvedValue(undefined);
 
-  // db.transaction(async (tx) => { ... }) - execute the callback with mock tx
+  // db.transaction(async (tx) => { ... })
   const mockTx = {
     execute: mockExecute,
     select: (...args: unknown[]) => mockTxSelect(...args),
@@ -355,49 +390,63 @@ beforeEach(() => {
   mockStoreActionResults.mockResolvedValue(undefined);
 });
 
-describe('reEvaluateRulesOnTranscodeChange', () => {
-  // Import dynamically after mocks are set up
+describe('reEvaluateRulesOnPauseState', () => {
   async function getFunction() {
     const mod = await import('../sessionLifecycle.js');
-    return mod.reEvaluateRulesOnTranscodeChange;
+    return mod.reEvaluateRulesOnPauseState;
   }
 
   describe('rule filtering', () => {
-    it('only evaluates transcode-related rules, skipping concurrent_streams', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('only evaluates pause-related rules, skipping concurrent_streams', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([]);
 
       const input = createDefaultInput();
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
-      // Should have been called with only the transcode rule, not the concurrent streams rule
       expect(mockEvaluateRulesAsync).toHaveBeenCalledTimes(1);
       const [_baseContext, rules] = mockEvaluateRulesAsync.mock.calls[0] as [unknown, RuleV2[]];
       expect(rules).toHaveLength(1);
-      expect(rules[0]?.id).toBe('rule-transcode-1');
-      expect(rules[0]?.name).toBe('Block 4K Transcoding');
+      expect(rules[0]?.id).toBe('rule-pause-1');
+      expect(rules[0]?.name).toBe('Kill After 15min Pause');
     });
 
-    it('returns empty array when no rules have transcode conditions', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('evaluates both current_pause and total_pause rules', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
+
+      mockEvaluateRulesAsync.mockResolvedValue([]);
 
       const input = createDefaultInput({
-        activeRulesV2: [createConcurrentStreamsRule()],
+        activeRulesV2: [createPauseRule(), createTotalPauseRule(), createConcurrentStreamsRule()],
       });
 
-      const results = await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
+
+      const [_ctx, rules] = mockEvaluateRulesAsync.mock.calls[0] as [unknown, RuleV2[]];
+      expect(rules).toHaveLength(2);
+      expect(rules.map((r) => r.id)).toEqual(['rule-pause-1', 'rule-total-pause-1']);
+    });
+
+    it('returns empty array when no rules have pause conditions', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
+
+      const input = createDefaultInput({
+        activeRulesV2: [createConcurrentStreamsRule(), createTranscodeRule()],
+      });
+
+      const results = await reEvaluateRulesOnPauseState(input);
 
       expect(results).toEqual([]);
       expect(mockEvaluateRulesAsync).not.toHaveBeenCalled();
     });
 
     it('returns empty array when there are no active rules', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       const input = createDefaultInput({ activeRulesV2: [] });
 
-      const results = await reEvaluateRulesOnTranscodeChange(input);
+      const results = await reEvaluateRulesOnPauseState(input);
 
       expect(results).toEqual([]);
       expect(mockEvaluateRulesAsync).not.toHaveBeenCalled();
@@ -405,61 +454,80 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
   });
 
   describe('violation creation', () => {
-    it('creates violation when transcode rule matches', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('creates violation when pause rule matches', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
+          matchedGroups: [0],
           actions: [{ type: 'kill_stream' }],
         },
       ]);
 
       const input = createDefaultInput();
-      const results = await reEvaluateRulesOnTranscodeChange(input);
+      const results = await reEvaluateRulesOnPauseState(input);
 
       expect(results).toHaveLength(1);
       expect(results[0]?.violation.id).toBe('violation-1');
-      // Verify DB insert was called
       expect(mockTxInsert).toHaveBeenCalled();
     });
 
-    it('includes transcodeReEval marker in violation data', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('includes pauseReEval marker in violation data', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
+          matchedGroups: [0],
           actions: [],
         },
       ]);
 
       const input = createDefaultInput();
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
-      // Verify the values passed to insert contain transcodeReEval: true
       const insertValues = mockValues.mock.calls[0]?.[0] as Record<string, unknown>;
       const data = insertValues?.data as Record<string, unknown>;
-      expect(data?.transcodeReEval).toBe(true);
+      expect(data?.pauseReEval).toBe(true);
+    });
+
+    it('uses severity from rule (not from actions) when creating violation', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
+
+      mockEvaluateRulesAsync.mockResolvedValue([
+        {
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
+          matched: true,
+          matchedGroups: [0],
+          actions: [],
+        },
+      ]);
+
+      // Rule has severity: 'warning' (set in createPauseRule)
+      const input = createDefaultInput();
+      await reEvaluateRulesOnPauseState(input);
+
+      const insertValues = mockValues.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(insertValues?.severity).toBe('warning');
     });
   });
 
   describe('deduplication', () => {
     it('skips violation creation when duplicate exists', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
+          matchedGroups: [0],
           actions: [],
         },
       ]);
@@ -468,34 +536,34 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
       mockLimit.mockResolvedValue([{ id: 'existing-violation-1' }]);
 
       const input = createDefaultInput();
-      const results = await reEvaluateRulesOnTranscodeChange(input);
+      const results = await reEvaluateRulesOnPauseState(input);
 
-      // No new violations should be created
       expect(results).toHaveLength(0);
       expect(mockTxInsert).not.toHaveBeenCalled();
     });
 
     it('does NOT execute side effects when violation is deduplicated', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
-          actions: [{ type: 'create_violation', severity: 'high' }, { type: 'kill_stream' }],
+          matchedGroups: [0],
+          // On every subsequent poll cycle while paused, the rule matches again
+          // but kill_stream must NOT fire again because dedup prevents it.
+          actions: [{ type: 'kill_stream' }],
         },
       ]);
 
-      // Simulate existing violation — kill_stream must NOT re-fire
+      // Simulate existing violation — this is the critical dedup scenario.
       mockLimit.mockResolvedValue([{ id: 'existing-violation-1' }]);
 
       const input = createDefaultInput();
-      const results = await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
-      expect(results).toHaveLength(0);
-      expect(mockTxInsert).not.toHaveBeenCalled();
+      // kill_stream should NOT fire on dedup
       expect(mockExecuteActions).not.toHaveBeenCalled();
       expect(mockStoreActionResults).not.toHaveBeenCalled();
     });
@@ -503,48 +571,44 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
 
   describe('transaction safety', () => {
     it('acquires advisory lock before dedup check', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
+          matchedGroups: [0],
           actions: [],
         },
       ]);
 
       const input = createDefaultInput();
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
-      // Transaction should be used
       expect(mockTransaction).toHaveBeenCalledTimes(1);
-
-      // Advisory lock should be acquired (tx.execute called with SQL)
       expect(mockExecute).toHaveBeenCalledTimes(1);
 
-      // Advisory lock should be called BEFORE the dedup select
       const executeOrder = mockExecute.mock.invocationCallOrder[0]!;
       const selectOrder = mockTxSelect.mock.invocationCallOrder[0]!;
       expect(executeOrder).toBeLessThan(selectOrder);
     });
 
-    it('runs dedup check + insert + trust update in same transaction', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('runs dedup check and insert in same transaction', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
+          matchedGroups: [0],
           actions: [],
         },
       ]);
 
       const input = createDefaultInput();
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
       // 1. dedup select
       expect(mockTxSelect).toHaveBeenCalled();
@@ -560,36 +624,36 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
 
   describe('trust score penalty', () => {
     it('does NOT automatically decrease trust score on violation creation', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
+          matchedGroups: [0],
           actions: [],
         },
       ]);
 
       const input = createDefaultInput();
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
-      // Trust score update should NOT be called for violation creation
+      // Trust score update is handled elsewhere, not in pause re-eval
       expect(mockTxUpdate).not.toHaveBeenCalled();
     });
   });
 
   describe('side effect actions', () => {
-    it('executes kill_stream action alongside violation', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('executes kill_stream action alongside new violation', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([
         {
-          ruleId: 'rule-transcode-1',
-          ruleName: 'Block 4K Transcoding',
+          ruleId: 'rule-pause-1',
+          ruleName: 'Kill After 15min Pause',
           matched: true,
-          matchedGroups: [0, 1],
+          matchedGroups: [0],
           actions: [{ type: 'kill_stream' }],
         },
       ]);
@@ -597,41 +661,42 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
       mockExecuteActions.mockResolvedValue([{ action: 'kill_stream', success: true }]);
 
       const input = createDefaultInput();
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
-      // Should execute side effect actions (kill_stream)
       expect(mockExecuteActions).toHaveBeenCalledTimes(1);
       const [_ctx, actions] = mockExecuteActions.mock.calls[0] as [unknown, { type: string }[]];
       expect(actions).toHaveLength(1);
       expect(actions[0]?.type).toBe('kill_stream');
 
-      // Should store action results
-      expect(mockStoreActionResults).toHaveBeenCalledWith('violation-1', 'rule-transcode-1', [
+      expect(mockStoreActionResults).toHaveBeenCalledWith('violation-1', 'rule-pause-1', [
         { action: 'kill_stream', success: true },
       ]);
     });
   });
 
   describe('context building', () => {
-    it('passes updated transcode fields from processed data to evaluation', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('uses fresh pauseData instead of stale existingSession values', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([]);
 
+      const freshPauseStart = new Date(Date.now() - 5 * 60 * 1000); // 5 min ago (fresh)
+      const stalePauseStart = new Date(Date.now() - 20 * 60 * 1000); // 20 min ago (stale)
+
       const input = createDefaultInput({
-        processed: createMockProcessedSession({
-          isTranscode: true,
-          videoDecision: 'transcode',
-          audioDecision: 'copy',
-        }),
         existingSession: createMockExistingSession({
-          isTranscode: false,
-          videoDecision: 'directplay',
-          audioDecision: 'directplay',
+          // These are STALE values from the DB (before update)
+          lastPausedAt: stalePauseStart,
+          pausedDurationMs: 0,
         }),
+        pauseData: {
+          // These are FRESH values from calculatePauseAccumulation
+          lastPausedAt: freshPauseStart,
+          pausedDurationMs: 300000, // 5 min accumulated
+        },
       });
 
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
       expect(mockEvaluateRulesAsync).toHaveBeenCalledTimes(1);
       const [baseContext] = mockEvaluateRulesAsync.mock.calls[0] as [
@@ -639,104 +704,69 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
         RuleV2[],
       ];
 
-      // Session should have UPDATED transcode fields from processed
-      expect(baseContext.session.isTranscode).toBe(true);
-      expect(baseContext.session.videoDecision).toBe('transcode');
-      expect(baseContext.session.audioDecision).toBe('copy');
+      // Session should use FRESH pause data, not stale existingSession values
+      expect(baseContext.session.lastPausedAt).toEqual(freshPauseStart);
+      expect(baseContext.session.pausedDurationMs).toBe(300000);
 
-      // But identity fields should come from existing session
+      // But identity fields should come from existingSession
       expect(baseContext.session.id).toBe('session-1');
       expect(baseContext.session.serverId).toBe('server-1');
       expect(baseContext.session.serverUserId).toBe('user-1');
     });
+
+    it('uses paused state from processed data', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
+
+      mockEvaluateRulesAsync.mockResolvedValue([]);
+
+      const input = createDefaultInput({
+        processed: createMockProcessedSession({ state: 'paused' }),
+        existingSession: createMockExistingSession({ state: 'playing' }), // Stale
+      });
+
+      await reEvaluateRulesOnPauseState(input);
+
+      const [baseContext] = mockEvaluateRulesAsync.mock.calls[0] as [
+        { session: Session },
+        RuleV2[],
+      ];
+      expect(baseContext.session.state).toBe('paused');
+    });
   });
 
   describe('false positive prevention', () => {
-    it('does NOT evaluate concurrent_streams rules on transcode change', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('does NOT evaluate concurrent_streams rules on pause re-eval', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([]);
 
       const input = createDefaultInput({
-        activeRulesV2: [
-          createConcurrentStreamsRule(),
-          createTranscodeRule(),
-          // Another non-transcode rule
-          {
-            id: 'rule-geo-1',
-            name: 'Geo Restriction',
-            description: null,
-            serverId: null,
-            severity: 'warning',
-            isActive: true,
-            conditions: {
-              groups: [
-                {
-                  conditions: [{ field: 'country', operator: 'not_in', value: ['US', 'CA'] }],
-                },
-              ],
-            },
-            actions: { actions: [] },
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-        ],
+        activeRulesV2: [createConcurrentStreamsRule(), createPauseRule(), createTranscodeRule()],
       });
 
-      await reEvaluateRulesOnTranscodeChange(input);
-
-      // Only the transcode rule should be evaluated
-      const [_ctx, rules] = mockEvaluateRulesAsync.mock.calls[0] as [unknown, RuleV2[]];
-      expect(rules).toHaveLength(1);
-      expect(rules[0]?.id).toBe('rule-transcode-1');
-    });
-
-    it('evaluates output_resolution rules (they depend on transcode state)', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
-
-      mockEvaluateRulesAsync.mockResolvedValue([]);
-
-      const outputResRule: RuleV2 = {
-        id: 'rule-output-res-1',
-        name: 'Block Low Resolution Output',
-        description: null,
-        serverId: null,
-        severity: 'warning',
-        isActive: true,
-        conditions: {
-          groups: [{ conditions: [{ field: 'output_resolution', operator: 'eq', value: '480p' }] }],
-        },
-        actions: { actions: [] },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const input = createDefaultInput({
-        activeRulesV2: [outputResRule, createConcurrentStreamsRule()],
-      });
-
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
       const [_ctx, rules] = mockEvaluateRulesAsync.mock.calls[0] as [unknown, RuleV2[]];
       expect(rules).toHaveLength(1);
-      expect(rules[0]?.id).toBe('rule-output-res-1');
+      expect(rules[0]?.id).toBe('rule-pause-1');
     });
 
-    it('evaluates is_transcode_downgrade rules (they depend on transcode state)', async () => {
-      const reEvaluateRulesOnTranscodeChange = await getFunction();
+    it('evaluates rules with mixed pause + non-pause conditions', async () => {
+      const reEvaluateRulesOnPauseState = await getFunction();
 
       mockEvaluateRulesAsync.mockResolvedValue([]);
 
-      const downgradeRule: RuleV2 = {
-        id: 'rule-downgrade-1',
-        name: 'Detect Transcode Downgrade',
+      const mixedRule: RuleV2 = {
+        id: 'rule-mixed-1',
+        name: 'Pause + Concurrent',
         description: null,
         serverId: null,
         severity: 'warning',
         isActive: true,
         conditions: {
           groups: [
-            { conditions: [{ field: 'is_transcode_downgrade', operator: 'eq', value: true }] },
+            { conditions: [{ field: 'current_pause_minutes', operator: 'gte', value: 10 }] },
+            { conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 1 }] },
           ],
         },
         actions: { actions: [] },
@@ -745,14 +775,15 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
       };
 
       const input = createDefaultInput({
-        activeRulesV2: [downgradeRule],
+        activeRulesV2: [mixedRule, createConcurrentStreamsRule()],
       });
 
-      await reEvaluateRulesOnTranscodeChange(input);
+      await reEvaluateRulesOnPauseState(input);
 
+      // The mixed rule has a pause condition, so it should be included
       const [_ctx, rules] = mockEvaluateRulesAsync.mock.calls[0] as [unknown, RuleV2[]];
       expect(rules).toHaveLength(1);
-      expect(rules[0]?.id).toBe('rule-downgrade-1');
+      expect(rules[0]?.id).toBe('rule-mixed-1');
     });
   });
 });

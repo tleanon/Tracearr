@@ -38,6 +38,7 @@ import {
   handleMediaChangeAtomic,
   processPollResults,
   reEvaluateRulesOnTranscodeChange,
+  reEvaluateRulesOnPauseState,
   stopSessionAtomic,
 } from './sessionLifecycle.js';
 import { mapMediaSession, pickStreamDetailFields } from './sessionMapper.js';
@@ -1049,6 +1050,34 @@ async function processServerSessions(
         if (hasChanges || flushElapsed) {
           await db.update(sessions).set(updatePayload).where(eq(sessions.id, existingSession.id));
           lastDbWriteMap.set(existingSession.id, now.getTime());
+        }
+
+        if (newState === 'paused' && activeRulesV2.length > 0) {
+          try {
+            const recentSessions = recentSessionsMap.get(serverUserId) ?? [];
+            const violationResults = await reEvaluateRulesOnPauseState({
+              existingSession,
+              processed,
+              pauseData: {
+                lastPausedAt: pauseResult.lastPausedAt,
+                pausedDurationMs: pauseResult.pausedDurationMs,
+              },
+              server: { id: server.id, name: server.name, type: server.type },
+              serverUser: userDetail,
+              activeRulesV2,
+              activeSessions,
+              recentSessions,
+            });
+
+            if (violationResults.length > 0 && pubSubService) {
+              await broadcastViolations(violationResults, existingSession.id, pubSubService);
+            }
+          } catch (error) {
+            console.error(
+              `[Poller] Error re-evaluating pause rules for session ${existingSession.id}:`,
+              error
+            );
+          }
         }
 
         // Build active session for cache/broadcast (with updated pause tracking values)

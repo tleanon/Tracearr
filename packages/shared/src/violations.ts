@@ -15,6 +15,8 @@ const CONDITION_FIELD_LABELS: Record<ConditionField, string> = {
   unique_ips_in_window: 'Unique IPs',
   unique_devices_in_window: 'Unique Devices',
   inactive_days: 'Inactive Days',
+  current_pause_minutes: 'Current Pause Duration',
+  total_pause_minutes: 'Total Pause Duration',
   source_resolution: 'Source Resolution',
   output_resolution: 'Output Resolution',
   is_transcoding: 'Transcoding',
@@ -304,6 +306,9 @@ function formatConditionActual(condition: ConditionEvidence, unitSystem: UnitSys
     case 'inactive_days':
     case 'account_age_days':
       return typeof actual === 'number' ? `${actual} days` : String(actual);
+    case 'current_pause_minutes':
+    case 'total_pause_minutes':
+      return typeof actual === 'number' ? `${Math.round(actual)} minutes` : String(actual);
     default:
       return String(actual);
   }

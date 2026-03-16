@@ -498,6 +498,34 @@ export interface TranscodeReEvalInput {
   recentSessions: Session[];
 }
 
+export interface PauseReEvalInput {
+  /** The existing session row (pre-update, used for identity fields) */
+  existingSession: typeof sessions.$inferSelect;
+  /** Updated processed data from the media server (has current state) */
+  processed: ProcessedSession;
+  /** Updated pause tracking fields (after calculatePauseAccumulation) */
+  pauseData: { lastPausedAt: Date | null; pausedDurationMs: number };
+  /** Server info */
+  server: { id: string; name: string; type: string };
+  /** Server user info */
+  serverUser: {
+    id: string;
+    username: string;
+    thumbUrl: string | null;
+    identityName: string | null;
+    trustScore: number;
+    sessionCount: number;
+    lastActivityAt: Date | null;
+    createdAt: Date;
+  };
+  /** Active V2 rules (will be filtered to pause-related) */
+  activeRulesV2: RuleV2[];
+  /** Active sessions for rule context */
+  activeSessions: Session[];
+  /** Recent sessions for rule evaluation context */
+  recentSessions: Session[];
+}
+
 // ============================================================================
 // Re-exports for convenience
 // ============================================================================

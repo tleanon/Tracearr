@@ -426,6 +426,59 @@ const evaluateInactiveDays: ConditionEvaluator = (
 };
 
 // ============================================================================
+// Pause Duration Evaluators
+// ============================================================================
+
+/**
+ * Evaluates how long the current session has been continuously paused (in minutes).
+ * Returns not matched if the session is not currently paused.
+ */
+const evaluateCurrentPauseMinutes: ConditionEvaluator = (
+  context: EvaluationContext,
+  condition: Condition
+): EvaluatorResult => {
+  const { session } = context;
+
+  // Only applies to currently paused sessions
+  if (session.state !== 'paused' || !session.lastPausedAt) {
+    return { matched: false, actual: 0 };
+  }
+
+  const currentPauseMs = Date.now() - new Date(session.lastPausedAt).getTime();
+  const currentPauseMinutes = currentPauseMs / 60000;
+
+  return {
+    matched: compare(currentPauseMinutes, condition.operator, condition.value),
+    actual: currentPauseMinutes,
+  };
+};
+
+/**
+ * Evaluates the total accumulated pause time across all pause/resume cycles (in minutes).
+ * Includes ongoing pause time if the session is currently paused.
+ */
+const evaluateTotalPauseMinutes: ConditionEvaluator = (
+  context: EvaluationContext,
+  condition: Condition
+): EvaluatorResult => {
+  const { session } = context;
+
+  let totalPauseMs = session.pausedDurationMs ?? 0;
+
+  // Add ongoing pause time if currently paused
+  if (session.state === 'paused' && session.lastPausedAt) {
+    totalPauseMs += Date.now() - new Date(session.lastPausedAt).getTime();
+  }
+
+  const totalPauseMinutes = totalPauseMs / 60000;
+
+  return {
+    matched: compare(totalPauseMinutes, condition.operator, condition.value),
+    actual: totalPauseMinutes,
+  };
+};
+
+// ============================================================================
 // Stream Quality Evaluators
 // ============================================================================
 
@@ -838,6 +891,8 @@ export const evaluatorRegistry: Record<ConditionField, ConditionEvaluator> = {
   unique_ips_in_window: evaluateUniqueIpsInWindow,
   unique_devices_in_window: evaluateUniqueDevicesInWindow,
   inactive_days: evaluateInactiveDays,
+  current_pause_minutes: evaluateCurrentPauseMinutes,
+  total_pause_minutes: evaluateTotalPauseMinutes,
 
   // Stream quality
   source_resolution: evaluateSourceResolution,

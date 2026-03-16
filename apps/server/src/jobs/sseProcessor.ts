@@ -42,6 +42,7 @@ import {
   buildPendingActiveSession,
   handleMediaChangeAtomic,
   reEvaluateRulesOnTranscodeChange,
+  reEvaluateRulesOnPauseState,
   confirmAndPersistSession,
 } from './poller/sessionLifecycle.js';
 import type { PendingSessionData } from './poller/types.js';
@@ -1087,6 +1088,69 @@ async function updateExistingSession(
     } catch (error) {
       console.error(
         `[SSEProcessor] Error re-evaluating rules on transcode change for session ${existingSession.id}:`,
+        error
+      );
+    }
+  }
+
+  // Re-evaluate pause-related V2 rules when the session is currently paused.
+  // Runs every update cycle because pause duration grows over time.
+  if (newState === 'paused') {
+    try {
+      const activeRulesV2 = await getActiveRulesV2();
+      if (activeRulesV2.length > 0 && cacheService) {
+        const serverUserRows = await db
+          .select({
+            id: serverUsers.id,
+            username: serverUsers.username,
+            thumbUrl: serverUsers.thumbUrl,
+            identityName: users.name,
+            trustScore: serverUsers.trustScore,
+            sessionCount: serverUsers.sessionCount,
+            lastActivityAt: serverUsers.lastActivityAt,
+            createdAt: serverUsers.createdAt,
+          })
+          .from(serverUsers)
+          .innerJoin(users, eq(serverUsers.userId, users.id))
+          .where(eq(serverUsers.id, existingSession.serverUserId))
+          .limit(1);
+
+        const serverUserDetail = serverUserRows[0];
+        if (serverUserDetail) {
+          const serverRows = await db
+            .select()
+            .from(servers)
+            .where(eq(servers.id, existingSession.serverId))
+            .limit(1);
+
+          const server = serverRows[0];
+          if (server) {
+            const activeSessions = await cacheService.getAllActiveSessions();
+            const recentSessions = await batchGetRecentUserSessions([serverUserDetail.id]);
+
+            const violationResults = await reEvaluateRulesOnPauseState({
+              existingSession,
+              processed,
+              pauseData: {
+                lastPausedAt: pauseResult.lastPausedAt,
+                pausedDurationMs: pauseResult.pausedDurationMs,
+              },
+              server: { id: server.id, name: server.name, type: server.type },
+              serverUser: serverUserDetail,
+              activeRulesV2,
+              activeSessions,
+              recentSessions: recentSessions.get(serverUserDetail.id) ?? [],
+            });
+
+            if (violationResults.length > 0 && pubSubService) {
+              await broadcastViolations(violationResults, existingSession.id, pubSubService);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(
+        `[SSEProcessor] Error re-evaluating pause rules for session ${existingSession.id}:`,
         error
       );
     }

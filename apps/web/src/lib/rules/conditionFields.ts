@@ -192,6 +192,28 @@ export const FIELD_DEFINITIONS: Record<ConditionField, FieldDefinition> = {
     min: 0,
     step: 1,
   },
+  current_pause_minutes: {
+    field: 'current_pause_minutes',
+    label: 'Current Pause Duration',
+    description: 'How long the session has been continuously paused',
+    category: 'session_behavior',
+    operators: COMPARISON_OPERATORS,
+    valueType: 'number',
+    unit: 'minutes',
+    min: 1,
+    step: 5,
+  },
+  total_pause_minutes: {
+    field: 'total_pause_minutes',
+    label: 'Total Pause Duration',
+    description: 'Total accumulated pause time across all pause/resume cycles',
+    category: 'session_behavior',
+    operators: COMPARISON_OPERATORS,
+    valueType: 'number',
+    unit: 'minutes',
+    min: 1,
+    step: 5,
+  },
 
   // Stream Quality
   source_resolution: {
