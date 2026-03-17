@@ -233,6 +233,7 @@ export const REDIS_KEYS = {
 export const CACHE_TTL = {
   DASHBOARD_STATS: 60,
   ACTIVE_SESSIONS: 30, // 30 seconds - lowered from 300
+  PENDING_SESSIONS: 300, // 5 minutes - pending sessions need longer TTL for pause scenarios
   USER_SESSIONS: 3600,
   RATE_LIMIT: 900,
   SERVER_HEALTH: 600, // 10 minutes - servers marked unhealthy if no update

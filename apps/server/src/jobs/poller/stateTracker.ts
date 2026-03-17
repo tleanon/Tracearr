@@ -380,18 +380,18 @@ export function shouldGroupWithPreviousSession(
  * A session is confirmed when ANY of these conditions are met:
  * 1. Already marked as confirmed (idempotent)
  * 2. Progress (viewOffset) exceeds 30 seconds
- * 3. Session has been active for 30+ seconds while playing
+ * 3. Session has been active for 30+ seconds (any state)
  */
 export function isPlaybackConfirmed(
   state: PlaybackConfirmationState,
   currentViewOffset: number,
-  currentState: string,
+  _currentState: string,
   now: number
 ): boolean {
   if (state.confirmedPlayback) return true;
   if (currentViewOffset > PLAYBACK_CONFIRM_THRESHOLD_MS) return true;
   const activeDuration = now - state.firstSeenAt;
-  if (activeDuration > PLAYBACK_CONFIRM_THRESHOLD_MS && currentState === 'playing') {
+  if (activeDuration > PLAYBACK_CONFIRM_THRESHOLD_MS) {
     return true;
   }
   return false;

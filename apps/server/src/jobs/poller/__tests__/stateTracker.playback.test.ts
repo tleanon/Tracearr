@@ -45,10 +45,10 @@ describe('isPlaybackConfirmed', () => {
     expect(isPlaybackConfirmed(state, 0, 'playing', now)).toBe(false);
   });
 
-  it('returns false if active duration exceeds threshold but paused', () => {
+  it('returns true if active duration exceeds threshold while paused', () => {
     const now = Date.now();
     const state = { ...baseState, firstSeenAt: now - PLAYBACK_CONFIRM_THRESHOLD_MS - 1 };
-    expect(isPlaybackConfirmed(state, 0, 'paused', now)).toBe(false);
+    expect(isPlaybackConfirmed(state, 0, 'paused', now)).toBe(true);
   });
 
   it('returns false for new session with no progress', () => {

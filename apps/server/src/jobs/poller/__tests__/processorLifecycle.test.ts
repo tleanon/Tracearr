@@ -158,13 +158,13 @@ describe('phantom session filtering', () => {
     expect(isConfirmed).toBe(true);
   });
 
-  it('paused session is not confirmed even after 30s', () => {
+  it('paused session is confirmed after 30s wall-clock time', () => {
     const pending = createPendingSession({ currentState: 'paused' });
     const at35s = pending.startedAt + 35000;
 
-    // Paused sessions should not be confirmed by duration alone
+    // Paused sessions confirm after 30s wall-clock time (state-independent)
     const { isConfirmed } = updatePendingSession(pending, 'paused', 0, at35s);
-    expect(isConfirmed).toBe(false);
+    expect(isConfirmed).toBe(true);
   });
 });
 

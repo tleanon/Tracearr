@@ -517,11 +517,11 @@ export function createCacheService(redis: Redis): CacheService {
       const key = REDIS_KEYS.PENDING_SESSION(serverId, sessionKey);
       const memberKey = `${serverId}:${sessionKey}`;
       const pipeline = redis.multi();
-      // Store session data with TTL matching active sessions
-      pipeline.setex(key, CACHE_TTL.ACTIVE_SESSIONS, JSON.stringify(data));
+      // Store session data with longer TTL to survive pause scenarios
+      pipeline.setex(key, CACHE_TTL.PENDING_SESSIONS, JSON.stringify(data));
       // Track in pending session IDs set for enumeration
       pipeline.sadd(REDIS_KEYS.PENDING_SESSION_IDS, memberKey);
-      pipeline.expire(REDIS_KEYS.PENDING_SESSION_IDS, CACHE_TTL.ACTIVE_SESSIONS);
+      pipeline.expire(REDIS_KEYS.PENDING_SESSION_IDS, CACHE_TTL.PENDING_SESSIONS);
       const results = await pipeline.exec();
       if (!results || results.some(([err]) => err !== null)) {
         console.error('[Cache] setPendingSession pipeline failed:', results);
