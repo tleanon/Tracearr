@@ -22,7 +22,6 @@ export type {
   SessionState,
   MediaType,
   Session,
-  SessionSegment,
   SessionWithDetails,
   ActiveSession,
   SourceVideoDetails,
@@ -178,13 +177,6 @@ export type {
   UnlinkPlexAccountResponse,
   // Version
   VersionInfo,
-  // Backup & Restore
-  BackupMetadata,
-  RestorePhase,
-  RestoreProgress,
-  BackupType,
-  BackupListItem,
-  BackupScheduleType,
   // Engagement tracking
   EngagementTier,
   UserBehaviorType,
@@ -463,9 +455,6 @@ export { ROLE_PERMISSIONS, canLogin, hasMinRole, isOwner, isActive } from './typ
 
 // Session constants
 export { MEDIA_TYPES, DEFAULT_STREAM_DETAILS } from './types.js';
-
-// Backup constants
-export { RESTORE_PHASES } from './types.js';
 
 // Violation utilities
 export {

@@ -31,8 +31,7 @@
     "db:migrate": "drizzle-kit migrate --config=drizzle.config.cjs",
     "db:push": "drizzle-kit push --config=drizzle.config.cjs",
     "db:studio": "drizzle-kit studio --config=drizzle.config.cjs",
-    "reset-password": "tsx scripts/reset-password.ts",
-    "backup": "tsx scripts/backup.ts"
+    "reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.4.1",
@@ -48,7 +47,6 @@
     "@fastify/swagger-ui": "^5.2.5",
     "@fastify/websocket": "^11.2.0",
     "@tracearr/shared": "workspace:*",
-    "archiver": "^7.0.1",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.70.1",
     "cacheable-lookup": "^7.0.0",
@@ -67,17 +65,14 @@
     "socket.io": "^4.8.3",
     "stream-json": "^1.9.1",
     "undici": "^7.24.4",
-    "unzipper": "^0.12.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tracearr/test-utils": "workspace:*",
-    "@types/archiver": "^7.0.0",
     "@types/bcrypt": "^6.0.0",
     "@types/country-list": "^2.1.4",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pg": "^8.16.0",
-    "@types/unzipper": "^0.10.11",
     "@types/stream-json": "^1.7.8",
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",

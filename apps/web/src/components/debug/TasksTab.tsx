@@ -31,7 +31,6 @@ interface TasksData {
     librarySync: QueueStats | null;
     versionCheck: QueueStats | null;
     inactivityCheck: QueueStats | null;
-    backup: QueueStats | null;
   };
   services: TrackedService[];
   timestamp: string;
@@ -74,11 +73,6 @@ const QUEUE_INFO: Array<{
     key: 'inactivityCheck',
     name: 'Inactivity Check',
     description: 'Account inactivity monitoring',
-  },
-  {
-    key: 'backup',
-    name: 'Backup',
-    description: 'Scheduled database backups',
   },
 ];
 

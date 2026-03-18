@@ -702,15 +702,6 @@ export const updateSettingsSchema = z.object({
     .regex(/^[a-zA-Z0-9-]*$/, 'Hostname may only contain letters, numbers, and hyphens')
     .nullable()
     .optional(),
-  // Backup settings
-  backupScheduleType: z.enum(['disabled', 'daily', 'weekly', 'monthly']).optional(),
-  backupScheduleTime: z
-    .string()
-    .regex(/^\d{2}:\d{2}$/, 'Time must be in HH:MM format')
-    .optional(),
-  backupScheduleDayOfWeek: z.number().int().min(0).max(6).optional(),
-  backupScheduleDayOfMonth: z.number().int().min(1).max(31).optional(),
-  backupRetentionCount: z.number().int().min(1).max(30).optional(),
 });
 
 // ============================================================================

@@ -28,9 +28,6 @@ echo "[Tracearr] Waiting for PostgreSQL..."
 for i in $(seq 1 $MAX_RETRIES); do
     if pg_isready -h 127.0.0.1 -p 5432 -U tracearr -q; then
         echo "[Tracearr] PostgreSQL is ready"
-        # Ensure tracearr is a superuser (needed for backup/restore extension operations).
-        # Uses local socket (trust auth) to connect as postgres superuser.
-        psql -U postgres -c "ALTER USER tracearr WITH SUPERUSER;" 2>/dev/null || true
         break
     fi
     if [ $i -eq $MAX_RETRIES ]; then

@@ -7,20 +7,8 @@ import { eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { updateSettingsSchema, type Settings, type WebhookFormat } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { users, sessions } from '../db/schema.js';
+import { settings, users, sessions } from '../db/schema.js';
 import { geoipService } from '../services/geoip.js';
-import { notificationManager } from '../services/notifications/index.js';
-import { getAllSettings, getSettings, setSettings } from '../services/settings.js';
-
-// Re-export service getters so existing import paths still work
-export {
-  getPollerSettings,
-  getGeoIPSettings,
-  getNetworkSettings,
-  getNotificationSettings,
-  getBackupScheduleSettings,
-  type NotificationSettings,
-} from '../services/settings.js';
 
 // API token format: trr_pub_<32 random bytes as base64url>
 const API_TOKEN_PREFIX = 'trr_pub_';
@@ -29,6 +17,11 @@ function generateApiToken(): string {
   const randomPart = randomBytes(32).toString('base64url');
   return `${API_TOKEN_PREFIX}${randomPart}`;
 }
+
+import { notificationManager } from '../services/notifications/index.js';
+
+// Default settings row ID (singleton pattern)
+const SETTINGS_ID = 1;
 
 export const settingsRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -42,7 +35,121 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       return reply.forbidden('Only server owners can view settings');
     }
 
-    return getAllSettings();
+    // Get or create settings
+    // First try to get settings - if primaryAuthMethod column doesn't exist, this will fail
+    let settingsRow;
+    let primaryAuthMethod: 'jellyfin' | 'local' = 'local';
+
+    try {
+      // Try full select including primaryAuthMethod
+      settingsRow = await db.select().from(settings).where(eq(settings.id, SETTINGS_ID)).limit(1);
+
+      // If we got here, column exists - extract the value
+      const row = settingsRow[0];
+      if (row && 'primaryAuthMethod' in row && row.primaryAuthMethod) {
+        primaryAuthMethod = row.primaryAuthMethod;
+      }
+    } catch {
+      // Column doesn't exist yet - select without primaryAuthMethod
+      // We need to explicitly select each column
+      settingsRow = await db
+        .select({
+          id: settings.id,
+          allowGuestAccess: settings.allowGuestAccess,
+          unitSystem: settings.unitSystem,
+          discordWebhookUrl: settings.discordWebhookUrl,
+          customWebhookUrl: settings.customWebhookUrl,
+          webhookFormat: settings.webhookFormat,
+          ntfyTopic: settings.ntfyTopic,
+          ntfyAuthToken: settings.ntfyAuthToken,
+          pushoverUserKey: settings.pushoverUserKey,
+          pushoverApiToken: settings.pushoverApiToken,
+          pollerEnabled: settings.pollerEnabled,
+          pollerIntervalMs: settings.pollerIntervalMs,
+          tautulliUrl: settings.tautulliUrl,
+          tautulliApiKey: settings.tautulliApiKey,
+          externalUrl: settings.externalUrl,
+          trustProxy: settings.trustProxy,
+          mobileEnabled: settings.mobileEnabled,
+          updatedAt: settings.updatedAt,
+        })
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID))
+        .limit(1);
+      // Use default since column doesn't exist
+      primaryAuthMethod = 'local';
+    }
+
+    // Create default settings if not exists
+    if (settingsRow.length === 0) {
+      try {
+        const inserted = await db
+          .insert(settings)
+          .values({
+            id: SETTINGS_ID,
+            allowGuestAccess: false,
+            primaryAuthMethod: 'local',
+          })
+          .returning();
+        settingsRow = inserted;
+      } catch {
+        // Column doesn't exist - insert without primaryAuthMethod
+        const inserted = await db
+          .insert(settings)
+          .values({
+            id: SETTINGS_ID,
+            allowGuestAccess: false,
+          })
+          .returning();
+        settingsRow = inserted;
+      }
+    }
+
+    const row = settingsRow[0];
+    if (!row) {
+      return reply.internalServerError('Failed to load settings');
+    }
+
+    // Handle case where usePlexGeoip column might not exist yet (before migration)
+    let usePlexGeoip = false;
+    if ('usePlexGeoip' in row && typeof row.usePlexGeoip === 'boolean') {
+      usePlexGeoip = row.usePlexGeoip;
+    }
+
+    // Handle case where tailscale columns might not exist yet (before migration)
+    let tailscaleEnabled = false;
+    let tailscaleHostname: string | null = null;
+    if ('tailscaleEnabled' in row && typeof row.tailscaleEnabled === 'boolean') {
+      tailscaleEnabled = row.tailscaleEnabled;
+    }
+    if ('tailscaleHostname' in row && typeof row.tailscaleHostname === 'string') {
+      tailscaleHostname = row.tailscaleHostname;
+    }
+
+    const result: Settings = {
+      allowGuestAccess: row.allowGuestAccess,
+      unitSystem: row.unitSystem,
+      discordWebhookUrl: row.discordWebhookUrl,
+      customWebhookUrl: row.customWebhookUrl,
+      webhookFormat: row.webhookFormat,
+      ntfyTopic: row.ntfyTopic,
+      ntfyAuthToken: row.ntfyAuthToken ? '********' : null, // Mask auth token
+      pushoverUserKey: row.pushoverUserKey,
+      pushoverApiToken: row.pushoverApiToken ? '********' : null, // Mask API Token
+      pollerEnabled: row.pollerEnabled,
+      pollerIntervalMs: row.pollerIntervalMs,
+      usePlexGeoip,
+      tautulliUrl: row.tautulliUrl,
+      tautulliApiKey: row.tautulliApiKey ? '********' : null, // Mask API key
+      externalUrl: row.externalUrl,
+      trustProxy: row.trustProxy,
+      mobileEnabled: row.mobileEnabled,
+      primaryAuthMethod,
+      tailscaleEnabled,
+      tailscaleHostname,
+    };
+
+    return result;
   });
 
   /**
@@ -61,24 +168,187 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       return reply.forbidden('Only server owners can update settings');
     }
 
-    // Build update object from provided fields
-    const updates: Partial<Settings> = {};
+    // Build update object
+    const updateData: Partial<{
+      allowGuestAccess: boolean;
+      unitSystem: 'metric' | 'imperial';
+      discordWebhookUrl: string | null;
+      customWebhookUrl: string | null;
+      webhookFormat: WebhookFormat | null;
+      ntfyTopic: string | null;
+      ntfyAuthToken: string | null;
+      pushoverUserKey: string | null;
+      pushoverApiToken: string | null;
+      pollerEnabled: boolean;
+      pollerIntervalMs: number;
+      usePlexGeoip: boolean;
+      tautulliUrl: string | null;
+      tautulliApiKey: string | null;
+      externalUrl: string | null;
+      trustProxy: boolean;
+      primaryAuthMethod: 'jellyfin' | 'local';
+      tailscaleHostname: string | null;
+      updatedAt: Date;
+    }> = {
+      updatedAt: new Date(),
+    };
 
-    for (const [key, value] of Object.entries(body.data)) {
-      if (value !== undefined) {
-        if (key === 'externalUrl' && typeof value === 'string') {
-          // Strip trailing slash for consistency
-          updates.externalUrl = value.replace(/\/+$/, '') || null;
-        } else {
-          (updates as Record<string, unknown>)[key] = value;
-        }
-      }
+    if (body.data.allowGuestAccess !== undefined) {
+      updateData.allowGuestAccess = body.data.allowGuestAccess;
     }
 
-    await setSettings(updates);
+    if (body.data.unitSystem !== undefined) {
+      updateData.unitSystem = body.data.unitSystem;
+    }
 
-    // Return updated settings with masks
-    return getAllSettings();
+    if (body.data.discordWebhookUrl !== undefined) {
+      updateData.discordWebhookUrl = body.data.discordWebhookUrl;
+    }
+
+    if (body.data.customWebhookUrl !== undefined) {
+      updateData.customWebhookUrl = body.data.customWebhookUrl;
+    }
+
+    if (body.data.webhookFormat !== undefined) {
+      updateData.webhookFormat = body.data.webhookFormat;
+    }
+
+    if (body.data.ntfyTopic !== undefined) {
+      updateData.ntfyTopic = body.data.ntfyTopic;
+    }
+
+    if (body.data.ntfyAuthToken !== undefined) {
+      updateData.ntfyAuthToken = body.data.ntfyAuthToken;
+    }
+
+    if (body.data.pushoverUserKey !== undefined) {
+      updateData.pushoverUserKey = body.data.pushoverUserKey;
+    }
+
+    if (body.data.pushoverApiToken !== undefined) {
+      updateData.pushoverApiToken = body.data.pushoverApiToken;
+    }
+
+    if (body.data.pollerEnabled !== undefined) {
+      updateData.pollerEnabled = body.data.pollerEnabled;
+    }
+
+    if (body.data.pollerIntervalMs !== undefined) {
+      updateData.pollerIntervalMs = body.data.pollerIntervalMs;
+    }
+
+    if (body.data.usePlexGeoip !== undefined) {
+      updateData.usePlexGeoip = body.data.usePlexGeoip;
+    }
+
+    if (body.data.tautulliUrl !== undefined) {
+      updateData.tautulliUrl = body.data.tautulliUrl;
+    }
+
+    if (body.data.tautulliApiKey !== undefined) {
+      // Store API key as-is (could encrypt if needed)
+      updateData.tautulliApiKey = body.data.tautulliApiKey;
+    }
+
+    if (body.data.externalUrl !== undefined) {
+      // Strip trailing slash for consistency
+      updateData.externalUrl = body.data.externalUrl?.replace(/\/+$/, '') ?? null;
+    }
+
+    if (body.data.trustProxy !== undefined) {
+      updateData.trustProxy = body.data.trustProxy;
+    }
+
+    if (body.data.primaryAuthMethod !== undefined) {
+      updateData.primaryAuthMethod = body.data.primaryAuthMethod;
+    }
+
+    if (body.data.tailscaleHostname !== undefined) {
+      updateData.tailscaleHostname = body.data.tailscaleHostname;
+    }
+
+    // Ensure settings row exists
+    const existing = await db.select().from(settings).where(eq(settings.id, SETTINGS_ID)).limit(1);
+
+    if (existing.length === 0) {
+      // Create with provided values - use full updateData with defaults for required fields
+      // Note: mobileEnabled is not in updateData, so it will use the database default (false)
+      await db.insert(settings).values({
+        id: SETTINGS_ID,
+        allowGuestAccess: updateData.allowGuestAccess ?? false,
+        discordWebhookUrl: updateData.discordWebhookUrl ?? null,
+        customWebhookUrl: updateData.customWebhookUrl ?? null,
+        webhookFormat: updateData.webhookFormat ?? null,
+        ntfyTopic: updateData.ntfyTopic ?? null,
+        ntfyAuthToken: updateData.ntfyAuthToken ?? null,
+        pushoverUserKey: updateData.pushoverUserKey ?? null,
+        pushoverApiToken: updateData.pushoverApiToken ?? null,
+        pollerEnabled: updateData.pollerEnabled ?? true,
+        pollerIntervalMs: updateData.pollerIntervalMs ?? 15000,
+        usePlexGeoip: updateData.usePlexGeoip ?? false,
+        tautulliUrl: updateData.tautulliUrl ?? null,
+        tautulliApiKey: updateData.tautulliApiKey ?? null,
+        externalUrl: updateData.externalUrl ?? null,
+        trustProxy: updateData.trustProxy ?? false,
+        primaryAuthMethod: updateData.primaryAuthMethod ?? 'local',
+      });
+    } else {
+      // Update existing
+      await db.update(settings).set(updateData).where(eq(settings.id, SETTINGS_ID));
+    }
+
+    // Return updated settings
+    const updated = await db.select().from(settings).where(eq(settings.id, SETTINGS_ID)).limit(1);
+
+    const row = updated[0];
+    if (!row) {
+      return reply.internalServerError('Failed to update settings');
+    }
+
+    // Handle case where columns might not exist yet (before migration)
+    let primaryAuthMethod: 'jellyfin' | 'local' = 'local';
+    if ('primaryAuthMethod' in row && row.primaryAuthMethod) {
+      primaryAuthMethod = row.primaryAuthMethod;
+    }
+    let usePlexGeoip = false;
+    if ('usePlexGeoip' in row && typeof row.usePlexGeoip === 'boolean') {
+      usePlexGeoip = row.usePlexGeoip;
+    }
+
+    // Handle case where tailscale columns might not exist yet (before migration)
+    let tailscaleEnabled = false;
+    let tailscaleHostname: string | null = null;
+    if ('tailscaleEnabled' in row && typeof row.tailscaleEnabled === 'boolean') {
+      tailscaleEnabled = row.tailscaleEnabled;
+    }
+    if ('tailscaleHostname' in row && typeof row.tailscaleHostname === 'string') {
+      tailscaleHostname = row.tailscaleHostname;
+    }
+
+    const result: Settings = {
+      allowGuestAccess: row.allowGuestAccess,
+      unitSystem: row.unitSystem,
+      discordWebhookUrl: row.discordWebhookUrl,
+      customWebhookUrl: row.customWebhookUrl,
+      webhookFormat: row.webhookFormat,
+      ntfyTopic: row.ntfyTopic,
+      ntfyAuthToken: row.ntfyAuthToken ? '********' : null, // Mask auth token
+      pushoverUserKey: row.pushoverUserKey,
+      pushoverApiToken: row.pushoverApiToken ? '********' : null, // Mask API token
+      pollerEnabled: row.pollerEnabled,
+      pollerIntervalMs: row.pollerIntervalMs,
+      usePlexGeoip,
+      tautulliUrl: row.tautulliUrl,
+      tautulliApiKey: row.tautulliApiKey ? '********' : null, // Mask API key
+      externalUrl: row.externalUrl,
+      trustProxy: row.trustProxy,
+      mobileEnabled: row.mobileEnabled,
+      primaryAuthMethod,
+      tailscaleEnabled,
+      tailscaleHostname,
+    };
+
+    return result;
   });
 
   /**
@@ -108,16 +378,14 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Missing webhook type');
     }
 
-    // Get current notification settings
-    const currentSettings = await getSettings([
-      'discordWebhookUrl',
-      'customWebhookUrl',
-      'webhookFormat',
-      'ntfyTopic',
-      'ntfyAuthToken',
-      'pushoverUserKey',
-      'pushoverApiToken',
-    ]);
+    // Get current settings to find the URL if not provided
+    const settingsRow = await db
+      .select()
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID))
+      .limit(1);
+
+    const currentSettings = settingsRow[0];
 
     let webhookUrl: string | null = null;
     let webhookFormat: WebhookFormat = 'json';
@@ -127,14 +395,14 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     let pushoverApiToken: string | null = null;
 
     if (type === 'discord') {
-      webhookUrl = url ?? currentSettings.discordWebhookUrl ?? null;
+      webhookUrl = url ?? currentSettings?.discordWebhookUrl ?? null;
     } else {
-      webhookUrl = url ?? currentSettings.customWebhookUrl ?? null;
-      webhookFormat = format ?? currentSettings.webhookFormat ?? 'json';
-      ntfyTopic = currentSettings.ntfyTopic ?? null;
-      ntfyAuthToken = currentSettings.ntfyAuthToken ?? null;
-      pushoverUserKey = currentSettings.pushoverUserKey ?? null;
-      pushoverApiToken = currentSettings.pushoverApiToken ?? null;
+      webhookUrl = url ?? currentSettings?.customWebhookUrl ?? null;
+      webhookFormat = format ?? currentSettings?.webhookFormat ?? 'json';
+      ntfyTopic = currentSettings?.ntfyTopic ?? null;
+      ntfyAuthToken = currentSettings?.ntfyAuthToken ?? null;
+      pushoverUserKey = currentSettings?.pushoverUserKey ?? null;
+      pushoverApiToken = currentSettings?.pushoverApiToken ?? null;
     }
 
     if (webhookFormat === 'pushover') {
@@ -282,3 +550,150 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     return { showWarning, stateHash };
   });
 };
+
+/**
+ * Get poller settings from database (for internal use by poller)
+ */
+export async function getPollerSettings(): Promise<{ enabled: boolean; intervalMs: number }> {
+  const row = await db
+    .select({
+      pollerEnabled: settings.pollerEnabled,
+      pollerIntervalMs: settings.pollerIntervalMs,
+    })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID))
+    .limit(1);
+
+  const settingsRow = row[0];
+  if (!settingsRow) {
+    // Return defaults if settings don't exist yet
+    return { enabled: true, intervalMs: 15000 };
+  }
+
+  return {
+    enabled: settingsRow.pollerEnabled,
+    intervalMs: settingsRow.pollerIntervalMs,
+  };
+}
+
+/**
+ * Get GeoIP settings from database (for internal use by poller/SSE processor)
+ */
+export async function getGeoIPSettings(): Promise<{ usePlexGeoip: boolean }> {
+  try {
+    const row = await db
+      .select({
+        usePlexGeoip: settings.usePlexGeoip,
+      })
+      .from(settings)
+      .where(eq(settings.id, SETTINGS_ID))
+      .limit(1);
+
+    const settingsRow = row[0];
+    if (!settingsRow) {
+      // Return defaults if settings don't exist yet
+      return { usePlexGeoip: false };
+    }
+
+    return {
+      usePlexGeoip: settingsRow.usePlexGeoip,
+    };
+  } catch {
+    // Column doesn't exist yet (before migration) - use default
+    return { usePlexGeoip: false };
+  }
+}
+
+/**
+ * Get network settings from database (for internal use)
+ */
+export async function getNetworkSettings(): Promise<{
+  externalUrl: string | null;
+  trustProxy: boolean;
+}> {
+  const row = await db
+    .select({
+      externalUrl: settings.externalUrl,
+      trustProxy: settings.trustProxy,
+    })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID))
+    .limit(1);
+
+  const settingsRow = row[0];
+  if (!settingsRow) {
+    return { externalUrl: null, trustProxy: false };
+  }
+
+  return {
+    externalUrl: settingsRow.externalUrl,
+    trustProxy: settingsRow.trustProxy,
+  };
+}
+
+/**
+ * Notification settings for internal use by NotificationDispatcher
+ */
+export interface NotificationSettings {
+  discordWebhookUrl: string | null;
+  customWebhookUrl: string | null;
+  webhookFormat: WebhookFormat | null;
+  ntfyTopic: string | null;
+  ntfyAuthToken: string | null;
+  pushoverUserKey: string | null;
+  pushoverApiToken: string | null;
+  webhookSecret: string | null;
+  mobileEnabled: boolean;
+  unitSystem: 'metric' | 'imperial';
+}
+
+/**
+ * Get notification settings from database (for internal use by notification dispatcher)
+ */
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  const row = await db
+    .select({
+      discordWebhookUrl: settings.discordWebhookUrl,
+      customWebhookUrl: settings.customWebhookUrl,
+      webhookFormat: settings.webhookFormat,
+      ntfyTopic: settings.ntfyTopic,
+      ntfyAuthToken: settings.ntfyAuthToken,
+      pushoverUserKey: settings.pushoverUserKey,
+      pushoverApiToken: settings.pushoverApiToken,
+      mobileEnabled: settings.mobileEnabled,
+      unitSystem: settings.unitSystem,
+    })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID))
+    .limit(1);
+
+  const settingsRow = row[0];
+  if (!settingsRow) {
+    // Return defaults if settings don't exist yet
+    return {
+      discordWebhookUrl: null,
+      customWebhookUrl: null,
+      webhookFormat: null,
+      ntfyTopic: null,
+      ntfyAuthToken: null,
+      pushoverUserKey: null,
+      pushoverApiToken: null,
+      webhookSecret: null,
+      mobileEnabled: false,
+      unitSystem: 'metric',
+    };
+  }
+
+  return {
+    discordWebhookUrl: settingsRow.discordWebhookUrl,
+    customWebhookUrl: settingsRow.customWebhookUrl,
+    webhookFormat: settingsRow.webhookFormat,
+    ntfyTopic: settingsRow.ntfyTopic,
+    ntfyAuthToken: settingsRow.ntfyAuthToken,
+    pushoverUserKey: settingsRow.pushoverUserKey,
+    pushoverApiToken: settingsRow.pushoverApiToken,
+    webhookSecret: null, // TODO: Add webhookSecret column to settings table in Phase 4
+    mobileEnabled: settingsRow.mobileEnabled,
+    unitSystem: settingsRow.unitSystem,
+  };
+}

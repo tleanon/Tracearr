@@ -46,7 +46,6 @@ services:
       - tracearr_postgres:/data/postgres
       - tracearr_redis:/data/redis
       - tracearr_data:/data/tracearr
-      - tracearr_backups:/data/backup
       #
       # Bind mounts are not recommended for supervised installs
       # due to permission issues with PostgreSQL and Redis
@@ -62,4 +61,3 @@ volumes:
   tracearr_postgres:
   tracearr_redis:
   tracearr_data:
-  tracearr_backups:

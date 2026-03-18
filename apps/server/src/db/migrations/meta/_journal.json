@@ -393,20 +393,6 @@
       "when": 1772917200000,
       "tag": "0055_progress_based_engagement",
       "breakpoints": true
-    },
-    {
-      "idx": 56,
-      "version": "7",
-      "when": 1772983237103,
-      "tag": "0056_fair_rick_jones",
-      "breakpoints": true
-    },
-    {
-      "idx": 57,
-      "version": "7",
-      "when": 1772983237104,
-      "tag": "0057_large_iron_monger",
-      "breakpoints": true
     }
   ]
 }

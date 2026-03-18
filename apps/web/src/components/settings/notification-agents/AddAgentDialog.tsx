@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
 import { Field, FieldLabel, FieldError } from '@/components/ui/field';
 import { useUpdateSettings } from '@/hooks/queries/useSettings';
 import { toast } from 'sonner';
@@ -334,25 +333,15 @@ export function AddAgentDialog({
                         {field.label}
                         {field.required && <span className="text-destructive ml-1">*</span>}
                       </FieldLabel>
-                      {field.type === 'secret' ? (
-                        <PasswordInput
-                          id={field.key}
-                          placeholder={field.placeholder}
-                          value={formData[field.key] ?? ''}
-                          onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                          onBlur={() => handleFieldBlur(field.key)}
-                          aria-invalid={!!error}
-                        />
-                      ) : (
-                        <Input
-                          id={field.key}
-                          placeholder={field.placeholder}
-                          value={formData[field.key] ?? ''}
-                          onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                          onBlur={() => handleFieldBlur(field.key)}
-                          aria-invalid={!!error}
-                        />
-                      )}
+                      <Input
+                        id={field.key}
+                        type={field.type === 'secret' ? 'password' : 'text'}
+                        placeholder={field.placeholder}
+                        value={formData[field.key] ?? ''}
+                        onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                        onBlur={() => handleFieldBlur(field.key)}
+                        aria-invalid={!!error}
+                      />
                       {error && <FieldError>{error}</FieldError>}
                     </Field>
                   );

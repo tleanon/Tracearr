@@ -6,78 +6,53 @@
  * - PATCH /settings - Update application settings (owner only)
  */
 
-import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
-import type { AuthUser, Settings } from '@tracearr/shared';
+import type { AuthUser } from '@tracearr/shared';
 
-// Mock the settings service
-vi.mock('../../services/settings.js', () => ({
-  getAllSettings: vi.fn(),
-  setSettings: vi.fn(),
-  getSettings: vi.fn(),
-  getSetting: vi.fn(),
-  getPollerSettings: vi.fn(),
-  getGeoIPSettings: vi.fn(),
-  getNetworkSettings: vi.fn(),
-  getNotificationSettings: vi.fn(),
-  getBackupScheduleSettings: vi.fn(),
-}));
-
-// Mock the database module (still needed for api-key and ip-warning routes)
+// Mock the database module before importing routes
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(),
+    insert: vi.fn(),
     update: vi.fn(),
-    selectDistinct: vi.fn(),
   },
 }));
 
-// Mock notification manager
-vi.mock('../../services/notifications/index.js', () => ({
-  notificationManager: {
-    testAgent: vi.fn(),
-  },
-}));
-
-// Mock geoip service
-vi.mock('../../services/geoip.js', () => ({
-  geoipService: {
-    isPrivateIP: vi.fn(),
-  },
-}));
-
-import { getAllSettings, setSettings } from '../../services/settings.js';
+// Import mocked modules
+import { db } from '../../db/client.js';
 import { settingsRoutes } from '../settings.js';
 
-const mockAllSettings: Settings = {
-  allowGuestAccess: false,
-  unitSystem: 'metric',
-  discordWebhookUrl: 'https://discord.com/api/webhooks/123',
-  customWebhookUrl: 'https://example.com/webhook',
-  webhookFormat: 'json',
-  ntfyTopic: null,
-  ntfyAuthToken: null,
-  pushoverUserKey: null,
-  pushoverApiToken: null,
-  pollerEnabled: true,
-  pollerIntervalMs: 15000,
-  usePlexGeoip: false,
-  tautulliUrl: 'http://localhost:8181',
-  tautulliApiKey: 'secret-api-key',
-  externalUrl: 'https://tracearr.example.com',
-  trustProxy: true,
-  mobileEnabled: false,
-  primaryAuthMethod: 'local',
-  tailscaleEnabled: false,
-  tailscaleHostname: null,
-  backupScheduleType: 'disabled',
-  backupScheduleTime: '02:00',
-  backupScheduleDayOfWeek: 0,
-  backupScheduleDayOfMonth: 1,
-  backupRetentionCount: 7,
-};
+// Helper to create DB chain mocks
+function mockDbSelectLimit(result: unknown[]) {
+  const chain = {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(result),
+  };
+  vi.mocked(db.select).mockReturnValue(chain as never);
+  return chain;
+}
+
+function mockDbInsert(result: unknown[]) {
+  const chain = {
+    values: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue(result),
+  };
+  vi.mocked(db.insert).mockReturnValue(chain as never);
+  return chain;
+}
+
+function mockDbUpdate() {
+  const chain = {
+    set: vi.fn().mockReturnThis(),
+    where: vi.fn().mockResolvedValue(undefined),
+  };
+  vi.mocked(db.update).mockReturnValue(chain as never);
+  return chain;
+}
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -105,13 +80,27 @@ const viewerUser: AuthUser = {
   serverIds: [],
 };
 
+const mockSettingsRow = {
+  id: 1,
+  allowGuestAccess: false,
+  discordWebhookUrl: 'https://discord.com/api/webhooks/123',
+  customWebhookUrl: 'https://example.com/webhook',
+  webhookFormat: 'json' as const,
+  ntfyTopic: null,
+  ntfyAuthToken: null,
+  pollerEnabled: true,
+  pollerIntervalMs: 15000,
+  tautulliUrl: 'http://localhost:8181',
+  tautulliApiKey: 'secret-api-key',
+  externalUrl: 'https://tracearr.example.com',
+  trustProxy: true,
+  mobileEnabled: false,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 describe('Settings Routes', () => {
   let app: FastifyInstance;
-
-  beforeEach(() => {
-    vi.mocked(getAllSettings).mockResolvedValue({ ...mockAllSettings });
-    vi.mocked(setSettings).mockResolvedValue(undefined);
-  });
 
   afterEach(async () => {
     await app?.close();
@@ -121,6 +110,8 @@ describe('Settings Routes', () => {
   describe('GET /settings', () => {
     it('returns settings for owner', async () => {
       app = await buildTestApp(ownerUser);
+
+      mockDbSelectLimit([mockSettingsRow]);
 
       const response = await app.inject({
         method: 'GET',
@@ -137,8 +128,10 @@ describe('Settings Routes', () => {
       expect(body.trustProxy).toBe(true);
     });
 
-    it('returns tautulli API key to owners', async () => {
+    it('masks tautulli API key in response', async () => {
       app = await buildTestApp(ownerUser);
+
+      mockDbSelectLimit([mockSettingsRow]);
 
       const response = await app.inject({
         method: 'GET',
@@ -147,16 +140,14 @@ describe('Settings Routes', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body.tautulliApiKey).toBe('secret-api-key');
+      expect(body.tautulliApiKey).toBe('********');
       expect(body.tautulliUrl).toBe('http://localhost:8181');
     });
 
     it('returns null for tautulliApiKey when not set', async () => {
       app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        tautulliApiKey: null,
-      });
+
+      mockDbSelectLimit([{ ...mockSettingsRow, tautulliApiKey: null }]);
 
       const response = await app.inject({
         method: 'GET',
@@ -168,7 +159,39 @@ describe('Settings Routes', () => {
       expect(body.tautulliApiKey).toBe(null);
     });
 
-    it('rejects viewer accessing settings', async () => {
+    it('creates default settings when none exist', async () => {
+      app = await buildTestApp(ownerUser);
+
+      // First select returns empty (no settings)
+      mockDbSelectLimit([]);
+
+      // Then insert creates defaults
+      const defaultSettings = {
+        id: 1,
+        allowGuestAccess: false,
+        discordWebhookUrl: null,
+        customWebhookUrl: null,
+        pollerEnabled: true,
+        pollerIntervalMs: 15000,
+        tautulliUrl: null,
+        tautulliApiKey: null,
+        externalUrl: null,
+        trustProxy: false,
+        mobileEnabled: false,
+      };
+      mockDbInsert([defaultSettings]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/settings',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.allowGuestAccess).toBe(false);
+    });
+
+    it('rejects guest accessing settings', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -182,11 +205,8 @@ describe('Settings Routes', () => {
 
     it('returns webhook format settings', async () => {
       app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        webhookFormat: 'ntfy',
-        ntfyTopic: 'my-topic',
-      });
+
+      mockDbSelectLimit([{ ...mockSettingsRow, webhookFormat: 'ntfy', ntfyTopic: 'my-topic' }]);
 
       const response = await app.inject({
         method: 'GET',
@@ -198,97 +218,71 @@ describe('Settings Routes', () => {
       expect(body.webhookFormat).toBe('ntfy');
       expect(body.ntfyTopic).toBe('my-topic');
     });
-
-    it('returns ntfy auth token to owners', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        ntfyAuthToken: 'tk_secret_token_456',
-      });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.ntfyAuthToken).toBe('tk_secret_token_456');
-    });
-
-    it('returns null for ntfy auth token when not set', async () => {
-      app = await buildTestApp(ownerUser);
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.ntfyAuthToken).toBe(null);
-    });
-
-    it('returns pushover api token to owners', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        pushoverApiToken: 'pushover-api-token',
-      });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.pushoverApiToken).toBe('pushover-api-token');
-    });
-
-    it('returns null for pushover api token when not set', async () => {
-      app = await buildTestApp(ownerUser);
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.pushoverApiToken).toBe(null);
-    });
   });
 
   describe('PATCH /settings', () => {
     it('updates settings for owner', async () => {
       app = await buildTestApp(ownerUser);
 
-      // After setSettings, getAllSettings returns updated values
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        allowGuestAccess: true,
+      // First check existing settings
+      mockDbSelectLimit([mockSettingsRow]);
+      mockDbUpdate();
+
+      // Return updated settings on final select
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi
+            .fn()
+            .mockResolvedValue(
+              selectCount === 1
+                ? [mockSettingsRow]
+                : [{ ...mockSettingsRow, allowGuestAccess: true }]
+            ),
+        };
+        return chain as never;
       });
 
       const response = await app.inject({
         method: 'PATCH',
         url: '/settings',
-        payload: { allowGuestAccess: true },
+        payload: {
+          allowGuestAccess: true,
+        },
       });
 
       expect(response.statusCode).toBe(200);
-      expect(setSettings).toHaveBeenCalledWith({ allowGuestAccess: true });
       const body = response.json();
       expect(body.allowGuestAccess).toBe(true);
     });
 
     it('updates webhook URLs', async () => {
       app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        discordWebhookUrl: 'https://new-discord-webhook.com',
-        customWebhookUrl: 'https://new-custom-webhook.com',
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    discordWebhookUrl: 'https://new-discord-webhook.com',
+                    customWebhookUrl: 'https://new-custom-webhook.com',
+                  },
+                ]
+          ),
+        };
+        return chain as never;
       });
+      mockDbUpdate();
 
       const response = await app.inject({
         method: 'PATCH',
@@ -307,16 +301,36 @@ describe('Settings Routes', () => {
 
     it('updates poller settings', async () => {
       app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        pollerEnabled: false,
-        pollerIntervalMs: 30000,
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    pollerEnabled: false,
+                    pollerIntervalMs: 30000,
+                  },
+                ]
+          ),
+        };
+        return chain as never;
       });
+      mockDbUpdate();
 
       const response = await app.inject({
         method: 'PATCH',
         url: '/settings',
-        payload: { pollerEnabled: false, pollerIntervalMs: 30000 },
+        payload: {
+          pollerEnabled: false,
+          pollerIntervalMs: 30000,
+        },
       });
 
       expect(response.statusCode).toBe(200);
@@ -325,50 +339,131 @@ describe('Settings Routes', () => {
       expect(body.pollerIntervalMs).toBe(30000);
     });
 
-    it('normalizes externalUrl by stripping trailing slash', async () => {
+    it('updates tautulli settings', async () => {
       app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        externalUrl: 'https://new-url.com',
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    tautulliUrl: 'http://tautulli:8181',
+                    tautulliApiKey: 'new-api-key',
+                  },
+                ]
+          ),
+        };
+        return chain as never;
       });
+      mockDbUpdate();
 
       const response = await app.inject({
         method: 'PATCH',
         url: '/settings',
-        payload: { externalUrl: 'https://new-url.com/' },
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(setSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ externalUrl: 'https://new-url.com' })
-      );
-    });
-
-    it('returns tautulli API key in PATCH response', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        tautulliApiKey: 'new-api-key',
-      });
-
-      const response = await app.inject({
-        method: 'PATCH',
-        url: '/settings',
-        payload: { tautulliApiKey: 'new-api-key' },
+        payload: {
+          tautulliUrl: 'http://tautulli:8181',
+          tautulliApiKey: 'new-api-key',
+        },
       });
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body.tautulliApiKey).toBe('new-api-key');
+      expect(body.tautulliUrl).toBe('http://tautulli:8181');
+      expect(body.tautulliApiKey).toBe('********'); // Should be masked
     });
 
-    it('rejects viewer updating settings', async () => {
+    it('updates network settings and normalizes externalUrl', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    externalUrl: 'https://new-url.com', // Should strip trailing slash
+                    trustProxy: false,
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          externalUrl: 'https://new-url.com/', // With trailing slash
+          trustProxy: false,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.externalUrl).toBe('https://new-url.com');
+      expect(body.trustProxy).toBe(false);
+    });
+
+    it('creates settings when none exist', async () => {
+      app = await buildTestApp(ownerUser);
+
+      // First select returns empty (no settings)
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [] // No existing settings
+              : [{ ...mockSettingsRow, allowGuestAccess: true }] // After insert
+          ),
+        };
+        return chain as never;
+      });
+
+      const insertChain = {
+        values: vi.fn().mockResolvedValue(undefined),
+      };
+      vi.mocked(db.insert).mockReturnValue(insertChain as never);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          allowGuestAccess: true,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(db.insert).toHaveBeenCalled();
+    });
+
+    it('rejects guest updating settings', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
         method: 'PATCH',
         url: '/settings',
-        payload: { allowGuestAccess: true },
+        payload: {
+          allowGuestAccess: true,
+        },
       });
 
       expect(response.statusCode).toBe(403);
@@ -381,46 +476,26 @@ describe('Settings Routes', () => {
       const response = await app.inject({
         method: 'PATCH',
         url: '/settings',
-        payload: { pollerIntervalMs: 'not-a-number' },
+        payload: {
+          pollerIntervalMs: 'not-a-number', // Should be number
+        },
       });
 
       expect(response.statusCode).toBe(400);
-    });
-
-    it('rejects invalid webhook format', async () => {
-      app = await buildTestApp(ownerUser);
-
-      const response = await app.inject({
-        method: 'PATCH',
-        url: '/settings',
-        payload: { webhookFormat: 'invalid-format' },
-      });
-
-      expect(response.statusCode).toBe(400);
-    });
-
-    it('clears webhook URLs when set to null', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        discordWebhookUrl: null,
-        customWebhookUrl: null,
-      });
-
-      const response = await app.inject({
-        method: 'PATCH',
-        url: '/settings',
-        payload: { discordWebhookUrl: null, customWebhookUrl: null },
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.discordWebhookUrl).toBe(null);
-      expect(body.customWebhookUrl).toBe(null);
     });
 
     it('handles empty update body', async () => {
       app = await buildTestApp(ownerUser);
+
+      vi.mocked(db.select).mockImplementation(() => {
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([mockSettingsRow]),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
 
       const response = await app.inject({
         method: 'PATCH',
@@ -429,6 +504,515 @@ describe('Settings Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
+      // Should still update the updatedAt timestamp
+      expect(db.update).toHaveBeenCalled();
     });
+
+    it('clears webhook URLs when set to null', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    discordWebhookUrl: null,
+                    customWebhookUrl: null,
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          discordWebhookUrl: null,
+          customWebhookUrl: null,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.discordWebhookUrl).toBe(null);
+      expect(body.customWebhookUrl).toBe(null);
+    });
+
+    it('updates webhook format to ntfy', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    webhookFormat: 'ntfy',
+                    ntfyTopic: 'tracearr-alerts',
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          webhookFormat: 'ntfy',
+          ntfyTopic: 'tracearr-alerts',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.webhookFormat).toBe('ntfy');
+      expect(body.ntfyTopic).toBe('tracearr-alerts');
+    });
+
+    it('updates webhook format to apprise', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    webhookFormat: 'apprise',
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          webhookFormat: 'apprise',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.webhookFormat).toBe('apprise');
+    });
+
+    it('rejects invalid webhook format', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          webhookFormat: 'invalid-format',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('clears ntfy topic when set to null', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [{ ...mockSettingsRow, ntfyTopic: 'old-topic' }]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    ntfyTopic: null,
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          ntfyTopic: null,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.ntfyTopic).toBe(null);
+    });
+
+    it('updates ntfy auth token', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    webhookFormat: 'ntfy',
+                    ntfyTopic: 'tracearr',
+                    ntfyAuthToken: 'tk_secret_token_123',
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          webhookFormat: 'ntfy',
+          ntfyTopic: 'tracearr',
+          ntfyAuthToken: 'tk_secret_token_123',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.webhookFormat).toBe('ntfy');
+      expect(body.ntfyTopic).toBe('tracearr');
+      // Auth token should be masked in response
+      expect(body.ntfyAuthToken).toBe('********');
+    });
+
+    it('masks ntfy auth token in GET response', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectLimit([
+        {
+          ...mockSettingsRow,
+          webhookFormat: 'ntfy',
+          ntfyTopic: 'my-topic',
+          ntfyAuthToken: 'tk_secret_token_456',
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/settings',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.ntfyAuthToken).toBe('********');
+    });
+
+    it('returns null for ntfy auth token when not set', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectLimit([
+        {
+          ...mockSettingsRow,
+          webhookFormat: 'ntfy',
+          ntfyTopic: 'my-topic',
+          ntfyAuthToken: null,
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/settings',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.ntfyAuthToken).toBe(null);
+    });
+
+    it('clears ntfy auth token when set to null', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [{ ...mockSettingsRow, ntfyAuthToken: 'tk_old_token' }]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    ntfyAuthToken: null,
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          ntfyAuthToken: null,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.ntfyAuthToken).toBe(null);
+    });
+
+    it('updates webhook format to pushover', async () => {
+      app = await buildTestApp(ownerUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue(
+            selectCount === 1
+              ? [mockSettingsRow]
+              : [
+                  {
+                    ...mockSettingsRow,
+                    webhookFormat: 'pushover',
+                    pushoverUserKey: 'pushover-user-key',
+                    pushoverApiToken: 'pushover-api-token',
+                  },
+                ]
+          ),
+        };
+        return chain as never;
+      });
+      mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: {
+          webhookFormat: 'pushover',
+          pushoverUserKey: 'pushover-user-key',
+          pushoverApiToken: 'pushover-api-token',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.webhookFormat).toBe('pushover');
+      expect(body.pushoverUserKey).toBe('pushover-user-key');
+      expect(body.pushoverApiToken).toBe('********');
+    });
+  });
+
+  it('clears pushover fields when set to null', async () => {
+    app = await buildTestApp(ownerUser);
+
+    let selectCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCount++;
+      const chain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue(
+          selectCount === 1
+            ? [
+                {
+                  ...mockSettingsRow,
+                  pushoverUserKey: 'pushover-user-key',
+                  pushoverApiToken: 'pushover-api-token',
+                },
+              ]
+            : [
+                {
+                  ...mockSettingsRow,
+                  pushoverUserKey: null,
+                  pushoverApiToken: null,
+                },
+              ]
+        ),
+      };
+      return chain as never;
+    });
+    mockDbUpdate();
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/settings',
+      payload: {
+        pushoverUserKey: null,
+        pushoverApiToken: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.pushoverUserKey).toBe(null);
+    expect(body.pushoverApiToken).toBe(null);
+  });
+
+  it('updates pushover api token', async () => {
+    app = await buildTestApp(ownerUser);
+
+    let selectCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCount++;
+      const chain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue(
+          selectCount === 1
+            ? [mockSettingsRow]
+            : [
+                {
+                  ...mockSettingsRow,
+                  webhookFormat: 'pushover',
+                  pushoverUserKey: 'pushover-user-key',
+                  pushoverApiToken: 'pushover-api-token',
+                },
+              ]
+        ),
+      };
+      return chain as never;
+    });
+    mockDbUpdate();
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/settings',
+      payload: {
+        webhookFormat: 'pushover',
+        pushoverUserKey: 'pushover-user-key',
+        pushoverApiToken: 'pushover-api-token',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.webhookFormat).toBe('pushover');
+    expect(body.pushoverUserKey).toBe('pushover-user-key');
+    // API token should be masked in response
+    expect(body.pushoverApiToken).toBe('********');
+  });
+
+  it('masks pushover api token in GET response', async () => {
+    app = await buildTestApp(ownerUser);
+
+    mockDbSelectLimit([
+      {
+        ...mockSettingsRow,
+        webhookFormat: 'pushover',
+        pushoverUserKey: 'pushover-user-key',
+        pushoverApiToken: 'pushover-api-token',
+      },
+    ]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/settings',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.pushoverApiToken).toBe('********');
+  });
+
+  it('returns null for pushover api token when not set', async () => {
+    app = await buildTestApp(ownerUser);
+
+    mockDbSelectLimit([
+      {
+        ...mockSettingsRow,
+        webhookFormat: 'pushover',
+        pushoverUserKey: 'pushover-user-key',
+        pushoverApiToken: null,
+      },
+    ]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/settings',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.pushoverApiToken).toBe(null);
+  });
+
+  it('clears pushover api token when set to null', async () => {
+    app = await buildTestApp(ownerUser);
+
+    let selectCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCount++;
+      const chain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue(
+          selectCount === 1
+            ? [{ ...mockSettingsRow, pushoverApiToken: 'pushover-api-token' }]
+            : [
+                {
+                  ...mockSettingsRow,
+                  pushoverApiToken: null,
+                },
+              ]
+        ),
+      };
+      return chain as never;
+    });
+    mockDbUpdate();
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/settings',
+      payload: {
+        pushoverApiToken: null,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.pushoverApiToken).toBe(null);
   });
 });

@@ -5,9 +5,8 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { isNotNull, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { servers, users } from '../db/schema.js';
+import { servers, users, settings } from '../db/schema.js';
 import { isClaimCodeEnabled } from '../utils/claimCode.js';
-import { getSetting } from '../services/settings.js';
 
 export const setupRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -31,7 +30,20 @@ export const setupRoutes: FastifyPluginAsync = async (app) => {
       db.select({ id: users.id }).from(users).where(isNotNull(users.passwordHash)).limit(1),
     ]);
 
-    const primaryAuthMethod = await getSetting('primaryAuthMethod');
+    // Try to get primaryAuthMethod from settings, but handle case where column doesn't exist yet
+    let primaryAuthMethod: 'jellyfin' | 'local' = 'local';
+    try {
+      const settingsRow = await db
+        .select({ primaryAuthMethod: settings.primaryAuthMethod })
+        .from(settings)
+        .limit(1);
+      if (settingsRow[0]?.primaryAuthMethod) {
+        primaryAuthMethod = settingsRow[0].primaryAuthMethod;
+      }
+    } catch {
+      // Column doesn't exist yet (migration not run) - use default
+      primaryAuthMethod = 'local';
+    }
 
     const needsSetup = ownerList.length === 0;
 

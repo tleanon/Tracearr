@@ -36,8 +36,6 @@ import {
   Clock,
   ExternalLink,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clapperboard,
 } from 'lucide-react';
 import { cn, getCountryName, getMediaDisplay } from '@/lib/utils';
@@ -50,7 +48,6 @@ import { StreamDetailsPanel } from './StreamDetailsPanel';
 import type {
   SessionWithDetails,
   ActiveSession,
-  SessionSegment,
   SessionState,
   MediaType,
   ServerType,
@@ -196,70 +193,8 @@ function Section({
   );
 }
 
-function SegmentTable({
-  segments,
-  segmentCount,
-}: {
-  segments: SessionSegment[];
-  segmentCount?: number;
-}) {
-  const timeFormat = getDateTimeFormatString();
-
-  return (
-    <div className="text-sm">
-      <table className="w-full">
-        <thead>
-          <tr className="text-muted-foreground text-xs">
-            <th className="pr-3 pb-1.5 text-left font-medium">#</th>
-            <th className="pr-3 pb-1.5 text-left font-medium">Started</th>
-            <th className="pr-3 pb-1.5 text-left font-medium">Stopped</th>
-            <th className="pr-3 pb-1.5 text-right font-medium">Watch</th>
-            <th className="pb-1.5 text-right font-medium">Paused</th>
-          </tr>
-        </thead>
-        <tbody>
-          {segments.map((seg, i) => {
-            const startDate = new Date(seg.startedAt);
-            const stopDate = seg.stoppedAt ? new Date(seg.stoppedAt) : null;
-
-            return (
-              <tr key={i} className="border-border/50 border-t">
-                <td className="text-muted-foreground py-1 pr-3">{i + 1}</td>
-                <td className="py-1 pr-3">{format(startDate, timeFormat)}</td>
-                <td className="py-1 pr-3">{stopDate ? format(stopDate, timeFormat) : '—'}</td>
-                <td className="py-1 pr-3 text-right">
-                  {formatDuration(seg.durationMs, { style: 'compact' })}
-                </td>
-                <td className="py-1 text-right">
-                  {seg.pausedDurationMs > 0
-                    ? formatDuration(seg.pausedDurationMs, { style: 'compact' })
-                    : '—'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {segmentCount && segmentCount > segments.length && (
-        <p className="text-muted-foreground mt-1.5 text-xs">
-          Showing {segments.length} of {segmentCount} segments
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
   const [locationOpen, setLocationOpen] = useState(false);
-  const [segmentsOpen, setSegmentsOpen] = useState(false);
-
-  // Reset segment view when session changes
-  const sessionId = session?.id;
-  const [prevSessionId, setPrevSessionId] = useState(sessionId);
-  if (sessionId !== prevSessionId) {
-    setPrevSessionId(sessionId);
-    setSegmentsOpen(false);
-  }
 
   if (!session) return null;
 
@@ -291,7 +226,7 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-[500px]">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader className="pb-4">
           <SheetTitle className="flex items-center gap-2 pr-8 text-base">
             <stateConfig.icon className={cn('h-4 w-4', stateConfig.color)} />
@@ -390,68 +325,45 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
             title="Playback"
             badge={
               'segmentCount' in session && session.segmentCount && session.segmentCount > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setSegmentsOpen((prev) => !prev)}
-                  className="cursor-pointer focus-visible:outline-none"
-                >
-                  <Badge variant="outline" className="gap-0.5 text-xs">
-                    {segmentsOpen ? (
-                      <>
-                        <ChevronLeft className="h-3 w-3" />
-                        Summary
-                      </>
-                    ) : (
-                      <>
-                        {session.segmentCount} Segments
-                        <ChevronRight className="h-3 w-3" />
-                      </>
-                    )}
-                  </Badge>
-                </button>
+                <Badge variant="outline" className="text-xs">
+                  {session.segmentCount} segments
+                </Badge>
               ) : null
             }
           >
-            {segmentsOpen && 'segments' in session && session.segments ? (
-              <SegmentTable
-                segments={session.segments}
-                segmentCount={'segmentCount' in session ? session.segmentCount : undefined}
-              />
-            ) : (
-              <div className="space-y-1.5 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Started</span>
-                  <span>
-                    {format(new Date(session.startedAt), getDateTimeFormatString())}
-                    <span className="text-muted-foreground ml-1.5 text-xs">
-                      ({formatDistanceToNow(new Date(session.startedAt), { addSuffix: true })})
-                    </span>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Started</span>
+                <span>
+                  {format(new Date(session.startedAt), getDateTimeFormatString())}
+                  <span className="text-muted-foreground ml-1.5 text-xs">
+                    ({formatDistanceToNow(new Date(session.startedAt), { addSuffix: true })})
                   </span>
-                </div>
-                {session.stoppedAt && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Stopped</span>
-                    <span>{format(new Date(session.stoppedAt), getDateTimeFormatString())}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Watch time</span>
-                  <span>{formatDuration(getWatchTime(session), { style: 'compact' })}</span>
-                </div>
-                {session.pausedDurationMs > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Paused</span>
-                    <span>{formatDuration(session.pausedDurationMs, { style: 'compact' })}</span>
-                  </div>
-                )}
-                {session.totalDurationMs && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Media length</span>
-                    <span>{formatDuration(session.totalDurationMs, { style: 'compact' })}</span>
-                  </div>
-                )}
+                </span>
               </div>
-            )}
+              {session.stoppedAt && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Stopped</span>
+                  <span>{format(new Date(session.stoppedAt), getDateTimeFormatString())}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Watch time</span>
+                <span>{formatDuration(getWatchTime(session), { style: 'compact' })}</span>
+              </div>
+              {session.pausedDurationMs > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Paused</span>
+                  <span>{formatDuration(session.pausedDurationMs, { style: 'compact' })}</span>
+                </div>
+              )}
+              {session.totalDurationMs && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Media length</span>
+                  <span>{formatDuration(session.totalDurationMs, { style: 'compact' })}</span>
+                </div>
+              )}
+            </div>
           </Section>
 
           {/* Location & Network */}

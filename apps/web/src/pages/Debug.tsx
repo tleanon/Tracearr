@@ -19,7 +19,6 @@ import {
   Camera,
   Loader2,
   Smartphone,
-  Download,
 } from 'lucide-react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
@@ -39,7 +38,7 @@ import {
 } from '@/components/ui/dialog';
 import { useVersion } from '@/hooks/queries';
 import { tokenStorage, api, BASE_URL } from '@/lib/api';
-import { debugFetch, debugRawFetch } from '@/lib/debugFetch';
+import { debugFetch } from '@/lib/debugFetch';
 import { TasksTab } from '@/components/debug/TasksTab';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -68,28 +67,11 @@ interface EnvInfo {
   platform: string;
   arch: string;
   uptime: number;
-  systemUptime: number;
-  loadAverage: [string, string, string];
   memoryUsage: {
     heapUsed: string;
+    heapTotal: string;
     rss: string;
   };
-  database: {
-    postgresVersion: string;
-    timescaleVersion: string;
-  };
-  redis: {
-    version: string;
-  };
-  container: {
-    isDocker: boolean;
-    memoryLimit: string;
-    memoryUsage: string;
-    cpuLimit: string;
-    cpuModel: string;
-  };
-  volumes: { path: string; source: string; free: string }[];
-  processes: { name: string; memory: string }[];
   env: Record<string, string>;
 }
 
@@ -213,26 +195,6 @@ export function Debug() {
   const handleLogsRefresh = () => {
     void logFiles.refetch();
     void logEntries.refetch();
-  };
-
-  const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
-  const handleDownloadLogs = async () => {
-    setIsDownloadingLogs(true);
-    try {
-      const res = await debugRawFetch('/logs/download');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const disposition = res.headers.get('Content-Disposition');
-      a.download = disposition?.match(/filename="(.+)"/)?.[1] ?? 'tracearr-logs.zip';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error('Failed to download logs');
-    } finally {
-      setIsDownloadingLogs(false);
-    }
   };
 
   // Snapshot management state
@@ -539,10 +501,6 @@ export function Debug() {
                       <div className="font-mono">
                         {envInfo.data.platform}/{envInfo.data.arch}
                       </div>
-                      <div className="text-muted-foreground">Docker</div>
-                      <div className="font-mono">
-                        {envInfo.data.container.isDocker ? 'Yes' : 'No'}
-                      </div>
                       <div className="text-muted-foreground">Uptime</div>
                       <div className="font-mono">{formatUptime(envInfo.data.uptime)}</div>
                       <div className="text-muted-foreground">Heap Used</div>
@@ -550,77 +508,18 @@ export function Debug() {
                       <div className="text-muted-foreground">RSS</div>
                       <div className="font-mono">{envInfo.data.memoryUsage.rss}</div>
                     </div>
-
-                    <p className="mt-6 mb-3 text-sm font-medium">Infrastructure</p>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-muted-foreground">Redis Version</div>
-                      <div className="font-mono">{envInfo.data.redis.version}</div>
-                      <div className="text-muted-foreground">PostgreSQL Version</div>
-                      <div className="font-mono">{envInfo.data.database.postgresVersion}</div>
-                      <div className="text-muted-foreground">TimescaleDB Version</div>
-                      <div className="font-mono">{envInfo.data.database.timescaleVersion}</div>
-                    </div>
-
-                    {envInfo.data.volumes.length > 0 && (
-                      <>
-                        <p className="mt-6 mb-3 text-sm font-medium">Volume Mounts</p>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          {envInfo.data.volumes.map((vol) => (
-                            <div key={vol.path} className="contents">
-                              <div className="text-muted-foreground">
-                                {vol.source}:{vol.path}
-                              </div>
-                              <div className="font-mono">{vol.free} free</div>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
                   </div>
-                  {/* Environment Variables & Processes */}
+                  {/* Environment Variables */}
                   <div>
                     <p className="mb-3 text-sm font-medium">Environment Variables</p>
-                    <div className="grid grid-cols-[40%_60%] gap-2 text-sm">
-                      {Object.entries(envInfo.data.env)
-                        .filter(([, value]) => value !== '')
-                        .map(([key, value]) => (
-                          <div key={key} className="contents">
-                            <div className="text-muted-foreground truncate">{key}</div>
-                            <div className="font-mono text-xs">{value}</div>
-                          </div>
-                        ))}
-                    </div>
-
-                    <p className="mt-6 mb-3 text-sm font-medium">System Stats</p>
-                    <div className="grid grid-cols-[40%_60%] gap-2 text-sm">
-                      <div className="text-muted-foreground">Memory Used / Total</div>
-                      <div className="font-mono">
-                        {envInfo.data.container.memoryUsage} / {envInfo.data.container.memoryLimit}
-                      </div>
-                      <div className="text-muted-foreground">CPU</div>
-                      <div className="font-mono">
-                        {envInfo.data.container.cpuLimit.replace(' cores', '')} x{' '}
-                        {envInfo.data.container.cpuModel}
-                      </div>
-                      <div className="text-muted-foreground">Load Average (1m / 5m / 15m)</div>
-                      <div className="font-mono">{envInfo.data.loadAverage.join(' / ')}</div>
-                      <div className="text-muted-foreground">System Uptime</div>
-                      <div className="font-mono">{formatUptime(envInfo.data.systemUptime)}</div>
-                    </div>
-
-                    {envInfo.data.processes.length > 0 && (
-                      <>
-                        <p className="mt-6 mb-3 text-sm font-medium">Process Memory Usage</p>
-                        <div className="grid grid-cols-[40%_60%] gap-2 text-sm">
-                          {envInfo.data.processes.map((proc, i) => (
-                            <div key={`${proc.name}-${i}`} className="contents">
-                              <div className="text-muted-foreground">{proc.name}</div>
-                              <div className="font-mono">{proc.memory}</div>
-                            </div>
-                          ))}
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {Object.entries(envInfo.data.env).map(([key, value]) => (
+                        <div key={key} className="contents">
+                          <div className="text-muted-foreground truncate">{key}</div>
+                          <div className="font-mono text-xs">{value}</div>
                         </div>
-                      </>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1038,14 +937,6 @@ export function Debug() {
                       disabled={logEntries.isFetching || logLimit >= MAX_LOG_LIMIT}
                     >
                       Load More
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleDownloadLogs}
-                      disabled={isDownloadingLogs}
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {isDownloadingLogs ? 'Downloading...' : 'Download All'}
                     </Button>
                   </div>
 

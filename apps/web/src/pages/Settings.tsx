@@ -13,7 +13,6 @@ import { MobileSettings } from '@/components/settings/MobileSettings';
 import { TailscaleSettings } from '@/components/settings/TailscaleSettings';
 import { ImportSettings } from '@/components/settings/ImportSettings';
 import { JobsSettings } from '@/components/settings/JobsSettings';
-import { BackupSettings } from '@/components/settings/BackupSettings';
 import { NotificationAgentsManager } from '@/components/settings/notification-agents';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Bell } from 'lucide-react';
@@ -28,7 +27,6 @@ function SettingsNav() {
     { href: '/settings/tailscale', label: 'Tailscale' },
     { href: '/settings/import', label: 'Import' },
     { href: '/settings/jobs', label: 'Jobs' },
-    { href: '/settings/backup', label: 'Backup' },
   ];
 
   return (
@@ -85,7 +83,6 @@ export function Settings() {
         <Route path="tailscale" element={<TailscaleSettings />} />
         <Route path="import" element={<ImportSettings />} />
         <Route path="jobs" element={<JobsSettings />} />
-        <Route path="backup" element={<BackupSettings />} />
       </Routes>
     </div>
   );

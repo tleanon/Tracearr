@@ -118,10 +118,10 @@ RUN groupadd --system --gid 1001 tracearr \
     && useradd --system --uid 1001 --gid tracearr --shell /bin/false tracearr
 
 # Create data directories with proper ownership
-RUN mkdir -p /data/postgres /data/redis /data/tracearr /data/backup /var/log/supervisor \
+RUN mkdir -p /data/postgres /data/redis /data/tracearr /var/log/supervisor \
     && chown -R postgres:postgres /data/postgres \
     && chown -R redis:redis /data/redis \
-    && chown -R tracearr:tracearr /data/tracearr /data/backup /app
+    && chown -R tracearr:tracearr /data/tracearr /app
 
 # Supervisord configuration
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -161,7 +161,7 @@ ENV NODE_ENV=production \
 EXPOSE 3000
 
 # Volumes for persistent data
-VOLUME ["/data/postgres", "/data/redis", "/data/tracearr", "/data/backup"]
+VOLUME ["/data/postgres", "/data/redis", "/data/tracearr"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://127.0.0.1:3000/health || exit 1

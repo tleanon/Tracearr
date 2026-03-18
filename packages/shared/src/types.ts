@@ -335,13 +335,6 @@ export interface ActiveSession extends Session {
   canTerminate: boolean;
 }
 
-export interface SessionSegment {
-  startedAt: string;
-  stoppedAt: string | null;
-  durationMs: number | null;
-  pausedDurationMs: number;
-}
-
 // Session with user/server details (from paginated API)
 // When returned from history queries, sessions are grouped by reference_id
 // Note: The single session endpoint (GET /sessions/:id) returns totalDurationMs,
@@ -351,8 +344,6 @@ export interface SessionWithDetails extends Omit<Session, 'ratingKey' | 'externa
   server: Pick<Server, 'id' | 'name' | 'type'>;
   // Number of pause/resume segments in this grouped play (1 = no pauses)
   segmentCount?: number;
-  // Individual segment details (up to 20), only present when segmentCount > 1
-  segments?: SessionSegment[];
 }
 
 // Rule types
@@ -910,12 +901,6 @@ export interface Settings {
   // Tailscale VPN
   tailscaleEnabled: boolean;
   tailscaleHostname: string | null;
-  // Backup settings
-  backupScheduleType: BackupScheduleType;
-  backupScheduleTime: string;
-  backupScheduleDayOfWeek: number;
-  backupScheduleDayOfMonth: number;
-  backupRetentionCount: number;
 }
 
 // Tailscale integration
@@ -2452,77 +2437,3 @@ export interface LibraryResolutionResponse {
   /** Resolution breakdown for TV episodes */
   tv: ResolutionBreakdown;
 }
-
-// ============================================================================
-// Backup & Restore
-// ============================================================================
-
-export interface BackupMetadata {
-  format: 1;
-  createdAt: string;
-  app: {
-    version: string;
-    commit: string;
-    tag: string;
-  };
-  database: {
-    pgVersion: string;
-    migrationCount: number;
-    latestMigration: string;
-    tableCount: number;
-    databaseSize: number;
-    timescaleVersion: string;
-    timescaleToolkitVersion: string | null;
-  };
-  counts: {
-    sessions: number;
-    users: number;
-    servers: number;
-    rules: number;
-    libraryItems: number;
-  };
-}
-
-export type RestorePhase =
-  | 'validating'
-  | 'creating_restore_point'
-  | 'shutting_down'
-  | 'restoring_database'
-  | 'running_migrations'
-  | 'rebuilding_aggregates'
-  | 'restarting'
-  | 'complete'
-  | 'failed';
-
-/** Ordered restore phases (excludes 'failed') for progress UI rendering. */
-export const RESTORE_PHASES: Exclude<RestorePhase, 'failed'>[] = [
-  'validating',
-  'creating_restore_point',
-  'shutting_down',
-  'restoring_database',
-  'running_migrations',
-  'rebuilding_aggregates',
-  'restarting',
-  'complete',
-];
-
-export interface RestoreProgress {
-  phase: RestorePhase;
-  message: string;
-  startedAt: string;
-  error?: string;
-  /** When phase is 'failed', indicates which phase the failure occurred in. */
-  failedAtPhase?: Exclude<RestorePhase, 'failed'>;
-}
-
-export type BackupType = 'manual' | 'scheduled' | 'uploaded';
-
-export interface BackupListItem {
-  filename: string;
-  size: number;
-  createdAt: string;
-  type: BackupType;
-  metadata: BackupMetadata;
-}
-
-export type BackupScheduleType = 'disabled' | 'daily' | 'weekly' | 'monthly';

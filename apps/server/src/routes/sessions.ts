@@ -606,15 +606,6 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           gs.progress_ms,
           gs.total_duration_ms,
           gs.segment_count,
-          CASE WHEN gs.segment_count > 1 THEN
-            (SELECT json_agg(sub) FROM (
-              SELECT s2.started_at, s2.stopped_at, s2.duration_ms, s2.paused_duration_ms
-              FROM sessions s2
-              WHERE s2.reference_id = gs.play_id OR s2.id = gs.play_id
-              ORDER BY s2.started_at
-              LIMIT 20
-            ) sub)
-          END as segments,
           gs.watched,
           gs.state,
           s.server_id,
@@ -698,14 +689,6 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         progress_ms: number | null;
         total_duration_ms: number | null;
         segment_count: string;
-        segments:
-          | {
-              started_at: string;
-              stopped_at: string | null;
-              duration_ms: string | null;
-              paused_duration_ms: string | null;
-            }[]
-          | null;
         watched: boolean;
         state: string;
         server_id: string;
@@ -795,12 +778,6 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       referenceId: row.reference_id,
       watched: row.watched,
       segmentCount: Number(row.segment_count),
-      segments: row.segments?.map((seg) => ({
-        startedAt: new Date(seg.started_at).toISOString(),
-        stoppedAt: seg.stopped_at ? new Date(seg.stopped_at).toISOString() : null,
-        durationMs: seg.duration_ms != null ? Number(seg.duration_ms) : null,
-        pausedDurationMs: seg.paused_duration_ms != null ? Number(seg.paused_duration_ms) : 0,
-      })),
       ipAddress: row.ip_address,
       geoCity: row.geo_city,
       geoRegion: row.geo_region,

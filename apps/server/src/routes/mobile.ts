@@ -36,9 +36,8 @@ import {
   terminateSessionBodySchema,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { mobileTokens, mobileSessions, servers, users, sessions } from '../db/schema.js';
+import { mobileTokens, mobileSessions, servers, users, settings, sessions } from '../db/schema.js';
 import { terminateSession } from '../services/termination.js';
-import { getSetting, setSetting } from '../services/settings.js';
 import { hasServerAccess } from '../utils/serverFiltering.js';
 import { disconnectMobileDevice, disconnectAllMobileDevices } from '../websocket/index.js';
 
@@ -142,7 +141,11 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Get mobile enabled status from settings
-    const isEnabled = await getSetting('mobileEnabled');
+    const settingsRow = await db
+      .select({ mobileEnabled: settings.mobileEnabled })
+      .from(settings)
+      .limit(1);
+    const isEnabled = settingsRow[0]?.mobileEnabled ?? false;
 
     // Get mobile sessions
     const sessionsRows = await db.select().from(mobileSessions);
@@ -190,7 +193,10 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Update settings to enable mobile
-    await setSetting('mobileEnabled', true);
+    await db
+      .update(settings)
+      .set({ mobileEnabled: true, updatedAt: new Date() })
+      .where(eq(settings.id, 1));
 
     // Get current state for response
     const sessionsRows = await db.select().from(mobileSessions);
@@ -235,7 +241,11 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Check if mobile is enabled
-    if (!(await getSetting('mobileEnabled'))) {
+    const settingsRow = await db
+      .select({ mobileEnabled: settings.mobileEnabled })
+      .from(settings)
+      .limit(1);
+    if (!settingsRow[0]?.mobileEnabled) {
       return reply.badRequest('Mobile access is not enabled');
     }
 
@@ -352,7 +362,10 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Disable in settings
-    await setSetting('mobileEnabled', false);
+    await db
+      .update(settings)
+      .set({ mobileEnabled: false, updatedAt: new Date() })
+      .where(eq(settings.id, 1));
 
     // Revoke all mobile sessions with blacklisting and force-disconnect
     const sessionsRows = await db.select().from(mobileSessions);

@@ -106,7 +106,7 @@ EOF
     gosu postgres /usr/lib/postgresql/15/bin/pg_ctl -D /data/postgres -w start
 
     log "Creating tracearr database and user..."
-    gosu postgres psql -c "CREATE USER tracearr WITH PASSWORD 'tracearr' SUPERUSER;" 2>/dev/null || true
+    gosu postgres psql -c "CREATE USER tracearr WITH PASSWORD 'tracearr';" 2>/dev/null || true
     gosu postgres psql -c "CREATE DATABASE tracearr OWNER tracearr;" 2>/dev/null || true
     gosu postgres psql -d tracearr -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
     gosu postgres psql -d tracearr -c "CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;"
@@ -189,11 +189,7 @@ fi
 # Ensure data directories exist and have correct ownership and permissions
 # This handles fresh installs, upgrades, and bind mounts to new paths
 mkdir -p /data/postgres /data/redis /data/tracearr
-# Only recurse if ownership is wrong (avoids slow walk on large data dirs)
-if [ "$(stat -c %U /data/postgres 2>/dev/null)" != "postgres" ]; then
-    log "Fixing PostgreSQL data directory ownership..."
-    chown -R postgres:postgres /data/postgres
-fi
+chown -R postgres:postgres /data/postgres
 # PostgreSQL requires data directory to be 0700 or 0750 - some filesystems
 # (especially Unraid's FUSE-based mounts) may not preserve these permissions
 chmod 700 /data/postgres
@@ -217,21 +213,9 @@ if [ -f /data/postgres/postmaster.pid ]; then
         rm -f /data/postgres/postmaster.pid
     fi
 fi
-if [ "$(stat -c %U /data/redis 2>/dev/null)" != "redis" ]; then
-    log "Fixing Redis data directory ownership..."
-    chown -R redis:redis /data/redis
-fi
-if [ "$(stat -c %U /data/tracearr 2>/dev/null)" != "tracearr" ]; then
-    log "Fixing Tracearr data directory ownership..."
-    chown -R tracearr:tracearr /data/tracearr
-fi
-if [ "$(stat -c %U /app 2>/dev/null)" != "tracearr" ]; then
-    log "Fixing application directory ownership..."
-    chown -R tracearr:tracearr /app
-else
-    # always chown the /app/data directory
-    chown -R tracearr:tracearr /app/data
-fi
+chown -R redis:redis /data/redis
+chown -R tracearr:tracearr /data/tracearr
+chown -R tracearr:tracearr /app
 
 # =============================================================================
 # Tune PostgreSQL for available resources (runs every startup)

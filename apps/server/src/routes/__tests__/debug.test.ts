@@ -18,7 +18,6 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '@tracearr/shared';
-import type { Redis } from 'ioredis';
 
 // Mock the database module
 vi.mock('../../db/client.js', () => ({
@@ -47,12 +46,6 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
   });
-
-  // Mock redis (cast to satisfy ioredis type)
-  app.decorate('redis', {
-    info: async () => 'redis_version:7.0.0\r\nused_memory:1000000\r\n',
-    status: 'ready',
-  } as unknown as Redis);
 
   // Register routes
   await app.register(debugRoutes, { prefix: '/debug' });
@@ -131,6 +124,17 @@ function mockDbSelectUsers(users: { id: string }[]) {
   } as never);
 }
 
+/**
+ * Create a mock for db.update()
+ */
+function mockDbUpdate() {
+  vi.mocked(db.update).mockReturnValue({
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    }),
+  } as never);
+}
+
 describe('Debug Routes', () => {
   let app: FastifyInstance;
   const ownerUser = createOwnerUser();
@@ -138,8 +142,6 @@ describe('Debug Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default execute mock — /debug/env calls db.execute(...).then() so it needs a promise
-    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as never);
   });
 
   afterEach(async () => {
@@ -496,6 +498,9 @@ describe('Debug Routes', () => {
       // Mock all delete operations
       vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
 
+      // Mock update for settings reset
+      mockDbUpdate();
+
       const response = await app.inject({
         method: 'POST',
         url: '/debug/reset',
@@ -506,10 +511,13 @@ describe('Debug Routes', () => {
       expect(body.success).toBe(true);
       expect(body.message).toContain('Factory reset complete');
 
-      // Verify delete was called 15 times (violations, terminationLogs, sessions, rules,
+      // Verify delete was called 14 times (violations, terminationLogs, sessions, rules,
       // notificationChannelRouting, notificationPreferences, mobileSessions, mobileTokens,
-      // librarySnapshots, libraryItems, serverUsers, servers, plexAccounts, users, settings)
-      expect(db.delete).toHaveBeenCalledTimes(15);
+      // librarySnapshots, libraryItems, serverUsers, servers, plexAccounts, users)
+      expect(db.delete).toHaveBeenCalledTimes(14);
+
+      // Verify settings update was called
+      expect(db.update).toHaveBeenCalled();
     });
   });
 
@@ -572,16 +580,23 @@ describe('Debug Routes', () => {
       expect(body).toHaveProperty('memoryUsage');
       expect(body).toHaveProperty('env');
 
-      // Check memory usage format (formatBytes output e.g. "123.4 MB")
-      expect(body.memoryUsage.heapUsed).toMatch(/^[\d.]+ \w+$/);
-      expect(body.memoryUsage.rss).toMatch(/^[\d.]+ \w+$/);
+      // Check memory usage format
+      expect(body.memoryUsage.heapUsed).toMatch(/^\d+ MB$/);
+      expect(body.memoryUsage.heapTotal).toMatch(/^\d+ MB$/);
+      expect(body.memoryUsage.rss).toMatch(/^\d+ MB$/);
+
+      // Check env does not expose secrets
+      expect(body.env.DATABASE_URL).toMatch(/^\[(set|not set)\]$/);
+      expect(body.env.REDIS_URL).toMatch(/^\[(set|not set)\]$/);
+      expect(body.env.ENCRYPTION_KEY).toMatch(/^\[(set|not set)\]$/);
     });
 
     it('masks sensitive environment variables', async () => {
       app = await buildTestApp(ownerUser);
 
-      // Set env var temporarily
-      process.env.CLAIM_CODE = 'secret-code';
+      // Set env vars temporarily
+      process.env.DATABASE_URL = 'postgres://secret:password@localhost/db';
+      process.env.REDIS_URL = 'redis://secret@localhost:6379';
 
       const response = await app.inject({
         method: 'GET',
@@ -591,21 +606,25 @@ describe('Debug Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
 
-      // Should show [set] not the actual value
-      expect(body.env.CLAIM_CODE).toBe('[set]');
+      // Should show [set] not the actual values
+      expect(body.env.DATABASE_URL).toBe('[set]');
+      expect(body.env.REDIS_URL).toBe('[set]');
 
       // Clean up
-      delete process.env.CLAIM_CODE;
+      delete process.env.DATABASE_URL;
+      delete process.env.REDIS_URL;
     });
 
-    it('returns empty string for unset optional environment variables', async () => {
+    it('shows [not set] for unset environment variables', async () => {
       app = await buildTestApp(ownerUser);
 
       // Ensure env vars are NOT set
-      const origClaimCode = process.env.CLAIM_CODE;
-      const origBasePath = process.env.BASE_PATH;
-      delete process.env.CLAIM_CODE;
-      delete process.env.BASE_PATH;
+      const origDbUrl = process.env.DATABASE_URL;
+      const origRedisUrl = process.env.REDIS_URL;
+      const origEncKey = process.env.ENCRYPTION_KEY;
+      delete process.env.DATABASE_URL;
+      delete process.env.REDIS_URL;
+      delete process.env.ENCRYPTION_KEY;
 
       const response = await app.inject({
         method: 'GET',
@@ -615,13 +634,15 @@ describe('Debug Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
 
-      // Should return empty string for unset optional vars
-      expect(body.env.CLAIM_CODE).toBe('');
-      expect(body.env.BASE_PATH).toBe('');
+      // Should show [not set] for unset env vars
+      expect(body.env.DATABASE_URL).toBe('[not set]');
+      expect(body.env.REDIS_URL).toBe('[not set]');
+      expect(body.env.ENCRYPTION_KEY).toBe('[not set]');
 
       // Restore original values
-      if (origClaimCode) process.env.CLAIM_CODE = origClaimCode;
-      if (origBasePath) process.env.BASE_PATH = origBasePath;
+      if (origDbUrl) process.env.DATABASE_URL = origDbUrl;
+      if (origRedisUrl) process.env.REDIS_URL = origRedisUrl;
+      if (origEncKey) process.env.ENCRYPTION_KEY = origEncKey;
     });
   });
 });

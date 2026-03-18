@@ -10,19 +10,6 @@ import type { AuthUser } from '@tracearr/shared';
 import { REDIS_KEYS } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
-import { getSetting } from '../services/settings.js';
-
-// Module-level cache — populated at startup and refreshed after restore
-let _jwtRevokedBefore: number | null = null; // Unix timestamp (seconds)
-
-export async function loadJwtRevokeSettings(): Promise<void> {
-  const val = await getSetting('jwtRevokedBefore');
-  _jwtRevokedBefore = val ? Math.floor(new Date(val).getTime() / 1000) : null;
-}
-
-function isTokenRevoked(iat: number | undefined): boolean {
-  return _jwtRevokedBefore !== null && iat !== undefined && iat < _jwtRevokedBefore;
-}
 
 // Public API token prefix
 const PUBLIC_API_TOKEN_PREFIX = 'trr_pub_';
@@ -73,9 +60,6 @@ const authPlugin: FastifyPluginAsync = async (app) => {
   app.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
     try {
       await request.jwtVerify();
-      if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-        return reply.unauthorized('Session invalidated — please log in again');
-      }
     } catch {
       reply.unauthorized('Invalid or expired token');
     }
@@ -85,9 +69,6 @@ const authPlugin: FastifyPluginAsync = async (app) => {
   app.decorate('requireOwner', async function (request: FastifyRequest, reply: FastifyReply) {
     try {
       await request.jwtVerify();
-      if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-        return reply.unauthorized('Session invalidated — please log in again');
-      }
 
       if (request.user.role !== 'owner') {
         reply.forbidden('Owner access required');
@@ -102,9 +83,6 @@ const authPlugin: FastifyPluginAsync = async (app) => {
   app.decorate('requireMobile', async function (request: FastifyRequest, reply: FastifyReply) {
     try {
       await request.jwtVerify();
-      if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-        return reply.unauthorized('Session invalidated — please log in again');
-      }
 
       if (!request.user.mobile) {
         reply.forbidden('Mobile access token required');

@@ -1,5 +1,5 @@
 # Build stage
-FROM node:24-alpine3.23 AS builder
+FROM node:24-alpine AS builder
 
 # Build arguments for version info
 ARG APP_VERSION=0.0.0
@@ -30,7 +30,7 @@ COPY . .
 RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --filter=@tracearr/web
 
 # Production stage
-FROM node:24-alpine3.23 AS runner
+FROM node:24-alpine AS runner
 
 # Build arguments for version info (must redeclare in each stage)
 ARG APP_VERSION=0.0.0
@@ -41,7 +41,7 @@ ARG APP_BUILD_DATE=
 RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 # Tailscale VPN binary (userspace networking, no root required)
-RUN apk add --no-cache tailscale postgresql-client
+RUN apk add --no-cache tailscale
 
 WORKDIR /app
 
@@ -83,8 +83,8 @@ COPY --from=builder /app/apps/server/src/db/migrations ./apps/server/src/db/migr
 COPY data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
 COPY data/GeoLite2-ASN.mmdb ./data/GeoLite2-ASN.mmdb
 
-# Create image cache and backup directories
-RUN mkdir -p /app/data/image-cache /data/backup
+# Create image cache directory (for volume mount compatibility)
+RUN mkdir -p /app/data/image-cache
 
 # Install production dependencies only (ignore-scripts prevents prepare/husky from running)
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts
@@ -94,7 +94,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 tracearr
 
 # Set ownership
-RUN chown -R tracearr:nodejs /app /data/backup
+RUN chown -R tracearr:nodejs /app
 
 USER tracearr
 

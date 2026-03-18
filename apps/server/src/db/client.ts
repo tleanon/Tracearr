@@ -38,17 +38,10 @@ export let db: NodePgDatabase<typeof schema> = drizzle(pool, { schema });
 
 /**
  * Destroy the current pool and create a fresh one.
- * Used after ALTER EXTENSION updates so new connections pick up the updated extension,
- * and during restore to re-establish connections after DB replacement.
- *
- * Safe to call even if the pool was already closed via closeDatabase().
+ * Used after ALTER EXTENSION updates so new connections pick up the updated extension.
  */
 export async function recreatePool(): Promise<void> {
-  try {
-    await pool.end();
-  } catch {
-    // Pool may already be closed (e.g. closeDatabase() was called first)
-  }
+  await pool.end();
   pool = createPool();
   db = drizzle(pool, { schema });
 }

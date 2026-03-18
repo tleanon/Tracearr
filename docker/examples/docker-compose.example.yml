@@ -1,10 +1,7 @@
-# Tracearr - PostgreSQL 18 Deployment (Experimental)
+# Tracearr - Standard Deployment (Separate Services)
 #
-# WARNING: NEW INSTALLATIONS ONLY
-# Do NOT use with existing data volumes. PostgreSQL 18 data format is
-# incompatible with PostgreSQL 15/16. Delete or rename old volumes first.
-#
-# Uses PostgreSQL 18 with TimescaleDB HA image (includes Toolkit extension).
+# Multi-container setup with separate database and cache services.
+# Use this if you want more control or have existing infrastructure.
 #
 # REQUIREMENTS:
 #   - ~1GB RAM for Tracearr container
@@ -16,7 +13,7 @@
 #   echo "COOKIE_SECRET=$(openssl rand -hex 32)" >> .env
 #
 #   # 2. Start
-#   docker compose -f docker-compose.pg18.yml up -d
+#   docker compose -f docker-compose.example.yml up -d
 #
 # OPTIONAL ENVIRONMENT VARIABLES:
 #   PORT=3000              # External port mapping
@@ -52,8 +49,7 @@ services:
       - tracearr-network
 
   timescale:
-    # TimescaleDB HA with PostgreSQL 18 - pinned for stability
-    image: timescale/timescaledb-ha:pg18.1-ts2.25.0
+    image: timescale/timescaledb:2.25.0-pg16
     container_name: tracearr-db
     shm_size: 512mb  # Required for PostgreSQL shared memory (increase for large imports)
     ulimits:
@@ -68,7 +64,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-tracearr}
       - POSTGRES_DB=tracearr
     volumes:
-      - timescale_data:/home/postgres/pgdata/data
+      - timescale_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tracearr"]
       interval: 10s

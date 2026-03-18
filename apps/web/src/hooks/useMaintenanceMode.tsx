@@ -7,7 +7,6 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import type { RestoreProgress } from '@tracearr/shared';
 import { BASE_PATH } from '@/lib/basePath';
 
 interface HealthResponse {
@@ -15,7 +14,6 @@ interface HealthResponse {
   wasReady?: boolean;
   db?: boolean;
   redis?: boolean;
-  restore?: RestoreProgress;
 }
 
 interface MaintenanceState {
@@ -24,8 +22,6 @@ interface MaintenanceState {
   wasReady: boolean;
   db: boolean;
   redis: boolean;
-  /** Present when a database restore is in progress */
-  restore: RestoreProgress | null;
 }
 
 const MAINTENANCE_POLL_MS = 5000;
@@ -37,7 +33,6 @@ const MaintenanceContext = createContext<MaintenanceState>({
   wasReady: false,
   db: true,
   redis: true,
-  restore: null,
 });
 
 export function MaintenanceProvider({ children }: { children: ReactNode }) {
@@ -46,46 +41,23 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     wasReady: false,
     db: true,
     redis: true,
-    restore: null,
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sawRestoreRef = useRef(false);
 
   const checkHealth = useCallback(async () => {
     try {
       const res = await fetch(`${BASE_PATH}/health`);
       const data = (await res.json()) as HealthResponse;
       const inMaintenance = data.mode === 'maintenance' || data.mode === 'starting';
-
-      // Track if we ever saw a restore in progress
-      if (data.restore && data.restore.phase !== 'failed') {
-        sawRestoreRef.current = true;
-      }
-
-      // After a restore completes and server is ready, force a full reload
-      // so the user lands on the login page (sessions were purged)
-      if (sawRestoreRef.current && !inMaintenance) {
-        sawRestoreRef.current = false;
-        window.location.reload();
-        return;
-      }
-
       setState({
         isInMaintenance: inMaintenance,
         wasReady: data.wasReady === true || !inMaintenance,
         db: data.db ?? false,
         redis: data.redis ?? false,
-        restore: data.restore ?? null,
       });
     } catch {
       // Server completely unreachable
-      setState((prev) => ({
-        ...prev,
-        isInMaintenance: true,
-        db: false,
-        redis: false,
-        restore: null,
-      }));
+      setState((prev) => ({ ...prev, isInMaintenance: true, db: false, redis: false }));
     }
   }, []);
 

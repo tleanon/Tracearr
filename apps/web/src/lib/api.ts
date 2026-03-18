@@ -70,10 +70,6 @@ import type {
   // Rules V2 types
   CreateRuleV2Input,
   UpdateRuleV2Input,
-  // Backup & Restore types
-  BackupMetadata,
-  BackupListItem,
-  BackupScheduleType,
 } from '@tracearr/shared';
 
 // Re-export shared types needed by frontend components
@@ -1586,66 +1582,6 @@ class ApiClient {
   // Running tasks
   tasks = {
     getRunning: () => this.request<RunningTasksResponse>('/tasks/running'),
-  };
-
-  // Backup & Restore
-  backup = {
-    create: () =>
-      this.request<{ filename: string; metadata: BackupMetadata }>('/backup/create', {
-        method: 'POST',
-      }),
-    upload: (file: File) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      return this.request<{ filename: string; metadata: BackupMetadata }>('/backup/upload', {
-        method: 'POST',
-        body: formData,
-      });
-    },
-    list: () => this.request<BackupListItem[]>('/backup/list'),
-    download: async (filename: string) => {
-      const { token } = await this.request<{ token: string }>(
-        `/backup/download-token/${filename}`,
-        { method: 'POST' }
-      );
-      window.open(`${this.baseUrl}/backup/download/${filename}?token=${token}`, '_blank');
-    },
-    deleteBackup: (filename: string) =>
-      this.request<{ success: boolean }>(`/backup/${filename}`, { method: 'DELETE' }),
-    restore: (filename: string) =>
-      this.request<{ valid: boolean; metadata: BackupMetadata }>('/backup/restore', {
-        method: 'POST',
-        body: JSON.stringify({ filename }),
-      }),
-    getInfo: () =>
-      this.request<{
-        backupDir: string;
-        databaseSize: number;
-        freeSpace: number;
-        canRestore: boolean;
-        pgVersion: string;
-        timescaleVersion: string;
-      }>('/backup/info'),
-    getSchedule: () =>
-      this.request<{
-        type: BackupScheduleType;
-        time: string;
-        dayOfWeek: number;
-        dayOfMonth: number;
-        retentionCount: number;
-        timezone: string;
-      }>('/backup/schedule'),
-    updateSchedule: (data: {
-      type: BackupScheduleType;
-      time: string;
-      dayOfWeek: number;
-      dayOfMonth: number;
-      retentionCount: number;
-    }) =>
-      this.request<{ success: boolean }>('/backup/schedule', {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      }),
   };
 }
 

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -98,8 +97,9 @@ function TautulliImportSection({
 
           <div className="space-y-2">
             <Label htmlFor="tautulliApiKey">API Key</Label>
-            <PasswordInput
+            <Input
               id="tautulliApiKey"
+              type="password"
               placeholder="Your Tautulli API key"
               value={tautulliApiKey}
               onChange={(e) => setTautulliApiKey(e.target.value)}

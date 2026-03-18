@@ -19,11 +19,15 @@ import {
   type FSWatcher,
 } from 'node:fs';
 import { promisify } from 'node:util';
+import { db } from '../db/client.js';
+import { settings } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import { registerService, unregisterService } from './serviceTracker.js';
-import { getSettings, setSettings, setSetting } from './settings.js';
 import type { TailscaleStatus, TailscaleInfo, TailscaleExitNode } from '@tracearr/shared';
 
 const execFileAsync = promisify(execFile);
+
+const SETTINGS_ID = 1;
 const TAILSCALED_BIN = '/usr/sbin/tailscaled';
 const TAILSCALE_BIN = '/usr/bin/tailscale';
 const STATE_FILE = '/tmp/ts-state';
@@ -133,14 +137,22 @@ class TailscaleService {
     }
 
     try {
-      const s = await getSettings(['tailscaleEnabled', 'tailscaleState', 'tailscaleHostname']);
+      const [row] = await db
+        .select({
+          tailscaleEnabled: settings.tailscaleEnabled,
+          tailscaleState: settings.tailscaleState,
+          tailscaleHostname: settings.tailscaleHostname,
+        })
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID))
+        .limit(1);
 
-      if (!s.tailscaleEnabled) {
+      if (!row?.tailscaleEnabled) {
         console.log('[Tailscale] Initialized (disabled)');
         return;
       }
 
-      this.hostname = s.tailscaleHostname;
+      this.hostname = row.tailscaleHostname ?? null;
 
       await this.startDaemon();
       console.log('[Tailscale] Initialized (enabled, starting daemon)');
@@ -167,10 +179,14 @@ class TailscaleService {
     this.restartAttempts = 0;
 
     // Persist enabled state to DB
-    await setSettings({
-      tailscaleEnabled: true,
-      tailscaleHostname: this.hostname,
-    });
+    await db
+      .update(settings)
+      .set({
+        tailscaleEnabled: true,
+        tailscaleHostname: this.hostname,
+        updatedAt: new Date(),
+      })
+      .where(eq(settings.id, SETTINGS_ID));
 
     await this.startDaemon();
     return this.getInfo();
@@ -189,7 +205,13 @@ class TailscaleService {
     await this.killAll();
 
     // Mark as disabled in DB but preserve state + hostname for re-enable
-    await setSetting('tailscaleEnabled', false);
+    await db
+      .update(settings)
+      .set({
+        tailscaleEnabled: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(settings.id, SETTINGS_ID));
 
     this.status = 'disabled';
     this.authUrl = null;
@@ -232,12 +254,16 @@ class TailscaleService {
       // Ignore
     }
 
-    // Clear all tailscale settings in DB
-    await setSettings({
-      tailscaleEnabled: false,
-      tailscaleState: null,
-      tailscaleHostname: null,
-    });
+    // Clear all tailscale columns in DB
+    await db
+      .update(settings)
+      .set({
+        tailscaleEnabled: false,
+        tailscaleState: null,
+        tailscaleHostname: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(settings.id, SETTINGS_ID));
 
     this.status = 'disabled';
     this.authUrl = null;
@@ -278,11 +304,14 @@ class TailscaleService {
     let hasExistingState = existsSync(STATE_FILE);
     if (!hasExistingState) {
       try {
-        const s = await getSettings(['tailscaleState']);
-        const tailscaleState = s.tailscaleState;
+        const [row] = await db
+          .select({ tailscaleState: settings.tailscaleState })
+          .from(settings)
+          .where(eq(settings.id, SETTINGS_ID))
+          .limit(1);
 
-        if (tailscaleState) {
-          writeFileSync(STATE_FILE, Buffer.from(tailscaleState, 'base64'));
+        if (row?.tailscaleState) {
+          writeFileSync(STATE_FILE, Buffer.from(row.tailscaleState, 'base64'));
           hasExistingState = true;
           console.log('[Tailscale] Restored state from database');
         }
@@ -684,7 +713,13 @@ class TailscaleService {
       const stateData = readFileSync(STATE_FILE);
       const base64State = stateData.toString('base64');
 
-      await setSetting('tailscaleState', base64State);
+      await db
+        .update(settings)
+        .set({
+          tailscaleState: base64State,
+          updatedAt: new Date(),
+        })
+        .where(eq(settings.id, SETTINGS_ID));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[Tailscale] Failed to persist state:', msg);

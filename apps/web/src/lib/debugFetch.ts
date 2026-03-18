@@ -24,15 +24,3 @@ export async function debugFetch<T>(path: string, options: RequestInit = {}): Pr
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
-
-/**
- * Raw fetch for debug endpoints (e.g. file downloads)
- */
-export async function debugRawFetch(path: string): Promise<Response> {
-  const token = tokenStorage.getAccessToken();
-  const res = await fetch(`${BASE_PATH}${API_BASE_PATH}/debug${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res;
-}

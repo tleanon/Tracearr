@@ -1,8 +1,8 @@
+import * as React from 'react';
 import { Loader2, Check, AlertCircle, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Field, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { PasswordInput } from '@/components/ui/password-input';
 import { NumericInput } from '@/components/ui/numeric-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -178,6 +178,7 @@ interface AutosaveSecretFieldProps extends AutosaveFieldBaseProps {
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  isMasked?: boolean; // Shows ******** for existing values
 }
 
 export function AutosaveSecretField({
@@ -192,18 +193,38 @@ export function AutosaveSecretField({
   onRetry,
   onReset,
   disabled,
+  isMasked,
   className,
 }: AutosaveSecretFieldProps) {
   const hasError = status === 'error';
+  const [isEditing, setIsEditing] = React.useState(false);
+
+  const displayValue = isMasked && !isEditing ? '' : value;
+  const displayPlaceholder = isMasked && !isEditing ? '••••••••' : placeholder;
+
+  const handleFocus = () => {
+    if (isMasked) {
+      setIsEditing(true);
+    }
+  };
+
+  const handleBlur = () => {
+    if (isMasked && !value) {
+      setIsEditing(false);
+    }
+  };
 
   return (
     <Field data-invalid={hasError} className={className}>
       <FieldHeader id={id} label={label} status={status} />
-      <PasswordInput
+      <Input
         id={id}
-        value={value}
+        type="password"
+        value={displayValue}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        placeholder={displayPlaceholder}
         disabled={disabled}
         aria-invalid={hasError}
       />
