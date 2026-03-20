@@ -85,6 +85,27 @@ const MediaInfo = z.object({
   seasonNumber: z.number().int().nullable().openapi({ example: 5 }),
   episodeNumber: z.number().int().nullable().openapi({ example: 16 }),
   year: z.number().int().nullable().openapi({ example: 2010 }),
+  artistName: z
+    .string()
+    .nullable()
+    .openapi({ description: 'Artist name (music tracks only)', example: 'Pink Floyd' }),
+  albumName: z
+    .string()
+    .nullable()
+    .openapi({
+      description: 'Album name (music tracks only)',
+      example: 'The Dark Side of the Moon',
+    }),
+  trackNumber: z
+    .number()
+    .int()
+    .nullable()
+    .openapi({ description: 'Track number (music tracks only)', example: 3 }),
+  discNumber: z
+    .number()
+    .int()
+    .nullable()
+    .openapi({ description: 'Disc number (music tracks only)', example: 1 }),
   thumbPath: z.string().nullable().openapi({ description: 'Poster path' }),
   posterUrl: z.string().nullable().openapi({ description: 'Proxied poster URL' }),
 });

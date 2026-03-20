@@ -345,6 +345,10 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
           seasonNumber: session.seasonNumber,
           episodeNumber: session.episodeNumber,
           year: session.year,
+          artistName: session.artistName,
+          albumName: session.albumName,
+          trackNumber: session.trackNumber,
+          discNumber: session.discNumber,
           thumbPath: session.thumbPath,
           posterUrl: buildPosterUrl(session.serverId, session.thumbPath),
           durationMs: session.totalDurationMs,
@@ -732,6 +736,10 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         s.season_number,
         s.episode_number,
         s.year,
+        s.artist_name,
+        s.album_name,
+        s.track_number,
+        s.disc_number,
         s.thumb_path,
         s.device,
         s.player_name,
@@ -787,6 +795,10 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         season_number: number | null;
         episode_number: number | null;
         year: number | null;
+        artist_name: string | null;
+        album_name: string | null;
+        track_number: number | null;
+        disc_number: number | null;
         thumb_path: string | null;
         device: string | null;
         player_name: string | null;
@@ -826,6 +838,10 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       seasonNumber: row.season_number,
       episodeNumber: row.episode_number,
       year: row.year,
+      artistName: row.artist_name,
+      albumName: row.album_name,
+      trackNumber: row.track_number,
+      discNumber: row.disc_number,
       thumbPath: row.thumb_path,
       posterUrl: buildPosterUrl(row.server_id, row.thumb_path),
       durationMs: row.duration_ms ? Number(row.duration_ms) : null,
