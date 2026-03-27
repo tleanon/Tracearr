@@ -224,6 +224,14 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     },
   });
 
+  // Handle requests without a Content-Type header.
+  // Some reverse proxies add Content-Length or Transfer-Encoding headers to bodyless
+  // requests (e.g. DELETE), which triggers Fastify's body parser and causes 415 errors.
+  app.addContentTypeParser('', { parseAs: 'string' }, (_req, body, done) => {
+    if (!(body as string).length) return done(null, undefined);
+    done(new Error('Content-Type header is required when sending a request body'), undefined);
+  });
+
   // Maintenance gate hook — MUST be registered before rate limiter so it
   // short-circuits requests before the rate limiter tries to access Redis
   app.addHook('onRequest', async (request, reply) => {
