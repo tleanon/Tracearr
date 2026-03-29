@@ -64,6 +64,7 @@ function getMaintenanceJobDescription(type: MaintenanceJobType): string {
     backfill_library_snapshots: 'Library snapshots backfill',
     cleanup_old_chunks: 'Old chunks cleanup',
     full_aggregate_rebuild: 'Full aggregate rebuild',
+    repair_corrupted_chunks: 'Corrupted chunks repair',
   };
   return descriptions[type] || type;
 }
@@ -331,6 +332,8 @@ async function processMaintenanceJob(job: Job<MaintenanceJobData>): Promise<Main
       return processCleanupOldChunksJob(job);
     case 'full_aggregate_rebuild':
       return processFullAggregateRebuildJob(job);
+    case 'repair_corrupted_chunks':
+      return processRepairCorruptedChunksJob(job);
     default:
       throw new Error(`Unknown maintenance job type: ${job.data.type}`);
   }
@@ -1897,9 +1900,14 @@ async function processBackfillLibrarySnapshotsJob(
       message: `Created ${totalSnapshotsCreated.toLocaleString()} snapshots for ${totalProcessed} libraries${totalCleanedUp > 0 ? `, cleaned up ${totalCleanedUp} invalid` : ''}`,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isCorruptedChunk = errorMessage.includes('pg_attribute catalog is missing');
+
     if (activeJobProgress) {
       activeJobProgress.status = 'error';
-      activeJobProgress.message = error instanceof Error ? error.message : 'Unknown error';
+      activeJobProgress.message = isCorruptedChunk
+        ? 'Database has corrupted compressed chunks. Go to Settings > Jobs and run "Repair Corrupted Chunks" first, then retry this job.'
+        : errorMessage;
       await publishProgress();
       activeJobProgress = null;
     }
@@ -2462,6 +2470,210 @@ export async function isMaintenanceJobRunning(
     isRunning: true,
     state: state as 'active' | 'waiting' | 'delayed',
   };
+}
+
+/**
+ * Repair corrupted TimescaleDB compressed chunks
+ *
+ * Detects chunks with pg_attribute catalog corruption (caused by improper shutdowns,
+ * disk issues, or TimescaleDB upgrades) and repairs them by decompressing and
+ * letting the compression policy re-compress them naturally.
+ */
+async function processRepairCorruptedChunksJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
+  const startTime = Date.now();
+  const pubSubService = getPubSubService();
+
+  activeJobProgress = {
+    type: 'repair_corrupted_chunks',
+    status: 'running',
+    totalRecords: 0,
+    processedRecords: 0,
+    updatedRecords: 0,
+    skippedRecords: 0,
+    errorRecords: 0,
+    message: 'Scanning for corrupted chunks...',
+    startedAt: new Date().toISOString(),
+  };
+
+  const publishProgress = async () => {
+    if (pubSubService && activeJobProgress) {
+      await pubSubService.publish(WS_EVENTS.MAINTENANCE_PROGRESS, activeJobProgress);
+    }
+  };
+
+  try {
+    await publishProgress();
+    await extendJobLock(job);
+
+    // Check all hypertables for corrupted compressed chunks
+    const hypertables = ['sessions', 'library_snapshots'];
+    let totalRepaired = 0;
+    let totalDropped = 0;
+    let totalErrors = 0;
+    let totalScanned = 0;
+
+    for (const table of hypertables) {
+      if (activeJobProgress) {
+        activeJobProgress.message = `Checking ${table} for corrupted chunks...`;
+      }
+      await publishProgress();
+
+      // Get all compressed chunks for this hypertable
+      let compressedChunks: Array<{ chunk_name: string; chunk_schema: string }>;
+      try {
+        const chunksResult = await db.execute(
+          sql.raw(`
+          SELECT chunk_name, chunk_schema
+          FROM timescaledb_information.chunks
+          WHERE hypertable_name = '${table}'
+            AND is_compressed = true
+          ORDER BY range_start
+        `)
+        );
+        compressedChunks = chunksResult.rows as Array<{
+          chunk_name: string;
+          chunk_schema: string;
+        }>;
+      } catch {
+        // Table might not be a hypertable
+        continue;
+      }
+
+      if (activeJobProgress) {
+        activeJobProgress.totalRecords += compressedChunks.length;
+      }
+
+      for (const chunk of compressedChunks) {
+        totalScanned++;
+        const chunkFqn = `${chunk.chunk_schema}.${chunk.chunk_name}`;
+
+        await extendJobLock(job);
+
+        // Test if the chunk is readable
+        try {
+          await db.execute(sql.raw(`SELECT 1 FROM ${chunkFqn} LIMIT 1`));
+          // Chunk is healthy
+          if (activeJobProgress) {
+            activeJobProgress.processedRecords = totalScanned;
+            activeJobProgress.skippedRecords++;
+          }
+        } catch (testError) {
+          const errorMsg = testError instanceof Error ? testError.message : String(testError);
+
+          if (!errorMsg.includes('pg_attribute catalog is missing')) {
+            // Different error — skip this chunk
+            if (activeJobProgress) {
+              activeJobProgress.processedRecords = totalScanned;
+              activeJobProgress.skippedRecords++;
+            }
+            continue;
+          }
+
+          // Found a corrupted chunk — attempt repair
+          console.log(`[Maintenance] Found corrupted chunk: ${chunkFqn} in ${table}`);
+          if (activeJobProgress) {
+            activeJobProgress.message = `Repairing corrupted chunk: ${chunk.chunk_name}...`;
+          }
+          await publishProgress();
+
+          try {
+            // Attempt to decompress the corrupted chunk
+            await db.execute(sql.raw(`SELECT decompress_chunk('${chunkFqn}')`));
+            totalRepaired++;
+            console.log(`[Maintenance] Successfully decompressed corrupted chunk: ${chunkFqn}`);
+
+            if (activeJobProgress) {
+              activeJobProgress.updatedRecords = totalRepaired;
+              activeJobProgress.processedRecords = totalScanned;
+            }
+          } catch (decompressError) {
+            // Decompression failed — the chunk data is unrecoverable
+            // Drop it so the table becomes usable again
+            const decompressMsg =
+              decompressError instanceof Error ? decompressError.message : String(decompressError);
+            console.warn(
+              `[Maintenance] Cannot decompress ${chunkFqn}, dropping chunk: ${decompressMsg}`
+            );
+
+            try {
+              await db.execute(
+                sql.raw(`SELECT drop_chunks('${table}',
+                older_than => (SELECT range_end FROM timescaledb_information.chunks WHERE chunk_name = '${chunk.chunk_name}' LIMIT 1),
+                newer_than => (SELECT range_start FROM timescaledb_information.chunks WHERE chunk_name = '${chunk.chunk_name}' LIMIT 1)
+              )`)
+              );
+              totalDropped++;
+              console.log(
+                `[Maintenance] Dropped unrecoverable chunk: ${chunkFqn} (data in this time range was lost)`
+              );
+
+              if (activeJobProgress) {
+                activeJobProgress.updatedRecords = totalRepaired + totalDropped;
+                activeJobProgress.processedRecords = totalScanned;
+              }
+            } catch (dropError) {
+              totalErrors++;
+              console.error(`[Maintenance] Failed to drop corrupted chunk ${chunkFqn}:`, dropError);
+              if (activeJobProgress) {
+                activeJobProgress.errorRecords = totalErrors;
+                activeJobProgress.processedRecords = totalScanned;
+              }
+            }
+          }
+          await publishProgress();
+        }
+      }
+    }
+
+    const durationMs = Date.now() - startTime;
+    const message =
+      totalRepaired === 0 && totalDropped === 0 && totalErrors === 0
+        ? `Scanned ${totalScanned} compressed chunks — no corruption found`
+        : `Repaired ${totalRepaired} chunk(s), dropped ${totalDropped} unrecoverable chunk(s)${totalErrors > 0 ? `, ${totalErrors} error(s)` : ''} in ${Math.round(durationMs / 1000)}s`;
+
+    if (activeJobProgress) {
+      activeJobProgress.status = 'complete';
+      activeJobProgress.message = message;
+      activeJobProgress.completedAt = new Date().toISOString();
+      await publishProgress();
+    }
+    activeJobProgress = null;
+
+    return {
+      success: totalErrors === 0,
+      type: 'repair_corrupted_chunks',
+      processed: totalScanned,
+      updated: totalRepaired + totalDropped,
+      skipped: totalScanned - totalRepaired - totalDropped - totalErrors,
+      errors: totalErrors,
+      durationMs,
+      message,
+    };
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (activeJobProgress) {
+      activeJobProgress.status = 'error';
+      activeJobProgress.message = `Failed: ${errorMessage}`;
+      activeJobProgress.completedAt = new Date().toISOString();
+      await publishProgress();
+    }
+    activeJobProgress = null;
+
+    return {
+      success: false,
+      type: 'repair_corrupted_chunks',
+      processed: 0,
+      updated: 0,
+      skipped: 0,
+      errors: 1,
+      durationMs,
+      message: errorMessage,
+    };
+  }
 }
 
 /**

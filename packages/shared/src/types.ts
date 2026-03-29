@@ -1612,7 +1612,8 @@ export type MaintenanceJobType =
   | 'backfill_user_dates'
   | 'backfill_library_snapshots'
   | 'cleanup_old_chunks'
-  | 'full_aggregate_rebuild';
+  | 'full_aggregate_rebuild'
+  | 'repair_corrupted_chunks';
 
 export type MaintenanceJobStatus = 'idle' | 'waiting' | 'running' | 'complete' | 'error';
 

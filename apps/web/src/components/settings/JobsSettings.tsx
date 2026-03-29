@@ -100,6 +100,7 @@ const JOB_ICONS: Record<string, typeof Database> = {
   rebuild_timescale_views: HardDrive,
   full_aggregate_rebuild: History,
   cleanup_old_chunks: Trash2,
+  repair_corrupted_chunks: Wrench,
 };
 
 const CATEGORY_CONFIG: Record<JobCategory, { icon: typeof Database; label: string }> = {

@@ -104,6 +104,14 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
             'Drops old TimescaleDB chunks beyond the retention period (90 days). ' +
             'Run this if the automatic retention job fails with "out of shared memory" errors.',
         },
+        {
+          type: 'repair_corrupted_chunks',
+          category: 'cleanup',
+          name: 'Repair Corrupted Chunks',
+          description:
+            'Detects and repairs corrupted TimescaleDB compressed chunks. ' +
+            'Run this if you see "pg_attribute catalog is missing" errors or if Library/Quality pages fail to load.',
+        },
       ],
     };
   });
@@ -133,6 +141,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
         'backfill_user_dates',
         'backfill_library_snapshots',
         'cleanup_old_chunks',
+        'repair_corrupted_chunks',
       ];
       if (!validTypes.includes(type as MaintenanceJobType)) {
         return reply.badRequest(`Invalid job type: ${type}`);
