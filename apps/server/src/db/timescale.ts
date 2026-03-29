@@ -1230,6 +1230,33 @@ export async function initTimescaleDB(): Promise<{
 
   actions.push('TimescaleDB extension found');
 
+  // Ensure Community Edition (timescaledb.license = 'timescale') is active.
+  // Compression, continuous aggregates, and retention policies all require it.
+  // The Timescale License is free for self-hosted use — the only restriction is
+  // offering TimescaleDB itself as a managed database service.
+  // TimescaleDB's check hook only accepts PGC_S_FILE and PGC_S_ARGV sources,
+  // so ALTER SYSTEM + reload is the only programmatic way to set this.
+  try {
+    const licenseResult = await db.execute(sql`SHOW timescaledb.license`);
+    const license = (licenseResult.rows[0] as { timescaledb_license?: string } | undefined)
+      ?.timescaledb_license;
+    if (license === 'apache') {
+      console.warn(
+        '[TimescaleDB] Apache license detected — switching to Community Edition (free for self-hosted use)'
+      );
+      await db.execute(sql`ALTER SYSTEM SET timescaledb.license = 'timescale'`);
+      await db.execute(sql`SELECT pg_reload_conf()`);
+      actions.push('Switched to Community Edition license');
+    }
+  } catch (err) {
+    console.warn(
+      '[TimescaleDB] Could not verify or set license. If you see compression errors, ' +
+        "add timescaledb.license = 'timescale' to your PostgreSQL configuration. " +
+        'See: https://docs.timescale.com/about/latest/timescaledb-editions/',
+      err
+    );
+  }
+
   // Enable Toolkit if available - not using any hyperfunctions yet but might later
   const toolkitAvailable = await isToolkitAvailableOnSystem();
   if (toolkitAvailable) {

@@ -86,6 +86,8 @@ listen_addresses = '127.0.0.1'
 port = 5432
 log_timezone = 'UTC'
 timezone = 'UTC'
+# Enable Timescale License
+timescaledb.license = timescale
 # Disable TimescaleDB telemetry
 timescaledb.telemetry_level = off
 # Allow unlimited tuple decompression for migrations on compressed hypertables

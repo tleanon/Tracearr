@@ -64,7 +64,7 @@ services:
         hard: 65536  # TimescaleDB chunks require many file descriptors
     # Allow unlimited tuple decompression for migrations on compressed hypertables
     # Increase lock table size for large imports (Tautulli imports with many TimescaleDB chunks)
-    command: postgres -c timescaledb.max_tuples_decompressed_per_dml_transaction=0 -c max_locks_per_transaction=4096 -c timescaledb.telemetry_level=off
+    command: postgres -c timescaledb.license=timescale -c timescaledb.max_tuples_decompressed_per_dml_transaction=0 -c max_locks_per_transaction=4096 -c timescaledb.telemetry_level=off
     environment:
       - POSTGRES_USER=tracearr
       - POSTGRES_PASSWORD=${DB_PASSWORD:-tracearr}
