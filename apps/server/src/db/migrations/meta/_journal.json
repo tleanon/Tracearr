@@ -407,6 +407,13 @@
       "when": 1772983237104,
       "tag": "0057_large_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1774885743934,
+      "tag": "0058_plain_owl",
+      "breakpoints": true
     }
   ]
 }

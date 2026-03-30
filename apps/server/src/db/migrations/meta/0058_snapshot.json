@@ -1,6 +1,6 @@
 {
-  "id": "b59ad2a8-6b16-496c-9921-45bfd070bc30",
-  "prevId": "3822f118-c283-4508-93c3-b0cd6ad3e450",
+  "id": "80834921-c2d1-45d4-a9ac-5626b0fe8841",
+  "prevId": "b7294d3f-b93c-4e16-9f7d-49904e014abb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -545,6 +545,12 @@
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true
+        },
+        "previous_refresh_token_hash": {
+          "name": "previous_refresh_token_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
         },
         "device_name": {
           "name": "device_name",
@@ -2594,190 +2600,41 @@
           "type": "integer",
           "primaryKey": true,
           "notNull": true,
-          "default": 1
+          "identity": {
+            "type": "always",
+            "name": "settings_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
         },
-        "allow_guest_access": {
-          "name": "allow_guest_access",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "unit_system": {
-          "name": "unit_system",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'metric'"
-        },
-        "discord_webhook_url": {
-          "name": "discord_webhook_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "custom_webhook_url": {
-          "name": "custom_webhook_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "webhook_format": {
-          "name": "webhook_format",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ntfy_topic": {
-          "name": "ntfy_topic",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ntfy_auth_token": {
-          "name": "ntfy_auth_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pushover_user_key": {
-          "name": "pushover_user_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pushover_api_token": {
-          "name": "pushover_api_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "poller_enabled": {
-          "name": "poller_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "poller_interval_ms": {
-          "name": "poller_interval_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 15000
-        },
-        "use_plex_geoip": {
-          "name": "use_plex_geoip",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "tautulli_url": {
-          "name": "tautulli_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tautulli_api_key": {
-          "name": "tautulli_api_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "external_url": {
-          "name": "external_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "trust_proxy": {
-          "name": "trust_proxy",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "mobile_enabled": {
-          "name": "mobile_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "primary_auth_method": {
-          "name": "primary_auth_method",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'local'"
-        },
-        "tailscale_enabled": {
-          "name": "tailscale_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "tailscale_state": {
-          "name": "tailscale_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tailscale_hostname": {
-          "name": "tailscale_hostname",
+        "name": {
+          "name": "name",
           "type": "varchar(255)",
           "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
           "notNull": false
-        },
-        "backup_schedule_type": {
-          "name": "backup_schedule_type",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'disabled'"
-        },
-        "backup_schedule_time": {
-          "name": "backup_schedule_time",
-          "type": "varchar(5)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'02:00'"
-        },
-        "backup_schedule_day_of_week": {
-          "name": "backup_schedule_day_of_week",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "backup_schedule_day_of_month": {
-          "name": "backup_schedule_day_of_month",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "backup_retention_count": {
-          "name": "backup_retention_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 7
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "settings_name_unique": {
+          "name": "settings_name_unique",
+          "nullsNotDistinct": false,
+          "columns": ["name"]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

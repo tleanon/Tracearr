@@ -66,6 +66,7 @@ import { getSetting, setSetting } from '../../services/settings.js';
 function createMultiMock() {
   const chain = {
     del: vi.fn().mockReturnThis(),
+    expire: vi.fn().mockReturnThis(),
     setex: vi.fn().mockReturnThis(),
     exec: vi.fn().mockResolvedValue([
       [null, 1],
@@ -1455,6 +1456,15 @@ describe('Mobile Routes', () => {
 
       mockRedis.eval.mockResolvedValue(1);
       mockRedis.get.mockResolvedValue(null); // Token not found in Redis
+
+      // DB fallback also returns empty (token doesn't exist anywhere)
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      } as never);
 
       const response = await app.inject({
         method: 'POST',

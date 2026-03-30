@@ -489,6 +489,7 @@ export const mobileSessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(), // SHA-256
+    previousRefreshTokenHash: varchar('previous_refresh_token_hash', { length: 64 }),
     deviceName: varchar('device_name', { length: 100 }).notNull(),
     deviceId: varchar('device_id', { length: 100 }).notNull(),
     platform: varchar('platform', { length: 20 }).notNull().$type<'ios' | 'android'>(),

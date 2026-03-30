@@ -1,0 +1,1 @@
+ALTER TABLE "mobile_sessions" ADD COLUMN "previous_refresh_token_hash" varchar(64);

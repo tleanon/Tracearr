@@ -21,7 +21,7 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { createHash, randomBytes } from 'crypto';
-import { eq, and, gt, isNull, sql } from 'drizzle-orm';
+import { eq, and, gt, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type {
   MobileConfig,
@@ -65,6 +65,9 @@ const TOKEN_GEN_RATE_WINDOW = 5 * 60; // 5 minutes in seconds
 const MOBILE_TOKEN_PREFIX = 'trr_mob_';
 
 const MOBILE_REFRESH_TTL = 90 * 24 * 60 * 60; // 90 days
+
+// Old refresh token stays valid this long after rotation so clients can retry
+const REFRESH_TOKEN_GRACE_PERIOD = 30; // seconds
 
 // Mobile JWT expiry
 const MOBILE_ACCESS_EXPIRY = '24h';
@@ -117,6 +120,19 @@ function hashToken(token: string): string {
  */
 function generateRefreshToken(): string {
   return randomBytes(32).toString('hex');
+}
+
+/**
+ * Delete both current and previous refresh tokens from Redis for a session.
+ */
+async function deleteSessionRefreshTokens(
+  redis: { del: (key: string) => Promise<number> },
+  session: { refreshTokenHash: string; previousRefreshTokenHash: string | null }
+): Promise<void> {
+  await redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(session.refreshTokenHash));
+  if (session.previousRefreshTokenHash) {
+    await redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(session.previousRefreshTokenHash));
+  }
 }
 
 export const mobileRoutes: FastifyPluginAsync = async (app) => {
@@ -362,7 +378,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         MOBILE_BLACKLIST_TTL,
         '1'
       );
-      await app.redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(session.refreshTokenHash));
+      await deleteSessionRefreshTokens(app.redis, session);
     }
     disconnectAllMobileDevices(authUser.userId);
     await db.delete(mobileSessions);
@@ -395,8 +411,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         MOBILE_BLACKLIST_TTL,
         '1'
       );
-      // 2. Delete refresh token
-      await app.redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(session.refreshTokenHash));
+      await deleteSessionRefreshTokens(app.redis, session);
     }
 
     // 3. Force-disconnect all mobile sockets for this user
@@ -454,8 +469,8 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     // 2. Force-disconnect any active WebSocket connections for this device
     disconnectMobileDevice(session.deviceId);
 
-    // 3. Delete refresh token from Redis
-    await app.redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(session.refreshTokenHash));
+    // 3. Delete refresh tokens from Redis
+    await deleteSessionRefreshTokens(app.redis, session);
 
     // 4. Delete session from DB (notification_preferences cascade-deleted via FK)
     await db.delete(mobileSessions).where(eq(mobileSessions.id, id));
@@ -665,11 +680,11 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
             .update(mobileSessions)
             .set({
               refreshTokenHash,
+              previousRefreshTokenHash: null,
               deviceName,
               platform,
               deviceSecret: deviceSecret ?? null,
               lastSeenAt: new Date(),
-              // Update userId in case the token creator changed
               userId: owner.id,
             })
             .where(eq(mobileSessions.id, existingSession[0]!.id));
@@ -812,13 +827,54 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     const { refreshToken } = body.data;
     const refreshTokenHash = hashToken(refreshToken);
 
-    // Check Redis for valid refresh token
+    // Look up refresh token in Redis, fall back to DB
+    let userId: string;
+    let deviceId: string;
     const stored = await app.redis.get(REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash));
-    if (!stored) {
-      return reply.unauthorized('Invalid or expired refresh token');
-    }
 
-    const { userId, deviceId } = JSON.parse(stored) as { userId: string; deviceId: string };
+    if (stored) {
+      ({ userId, deviceId } = JSON.parse(stored) as { userId: string; deviceId: string });
+    } else {
+      // Redis miss — check DB
+      const dbSession = await db
+        .select()
+        .from(mobileSessions)
+        .where(
+          or(
+            eq(mobileSessions.refreshTokenHash, refreshTokenHash),
+            eq(mobileSessions.previousRefreshTokenHash, refreshTokenHash)
+          )
+        )
+        .limit(1);
+
+      if (dbSession.length === 0) {
+        return reply.unauthorized('Invalid or expired refresh token');
+      }
+
+      const session = dbSession[0]!;
+      userId = session.userId;
+      deviceId = session.deviceId;
+
+      // Short TTL for grace-period replays
+      const isGracePeriodReplay = session.previousRefreshTokenHash === refreshTokenHash;
+      const reconstructTtl = isGracePeriodReplay ? REFRESH_TOKEN_GRACE_PERIOD : MOBILE_REFRESH_TTL;
+
+      // Reconstruct Redis entry
+      try {
+        await app.redis.setex(
+          REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash),
+          reconstructTtl,
+          JSON.stringify({ userId, deviceId })
+        );
+      } catch (err) {
+        app.log.warn({ err, deviceId }, 'Failed to reconstruct mobile refresh token in Redis');
+      }
+
+      app.log.info(
+        { deviceId, gracePeriod: isGracePeriodReplay },
+        'Recovered mobile refresh token from DB after Redis miss'
+      );
+    }
 
     // Verify user still exists and is owner
     const userRow = await db.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -833,7 +889,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     const sessionRow = await db
       .select()
       .from(mobileSessions)
-      .where(eq(mobileSessions.refreshTokenHash, refreshTokenHash))
+      .where(and(eq(mobileSessions.deviceId, deviceId), eq(mobileSessions.userId, userId)))
       .limit(1);
 
     if (sessionRow.length === 0) {
@@ -853,7 +909,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         role: 'owner',
         serverIds,
         mobile: true,
-        deviceId, // Device identifier for session targeting
+        deviceId,
       },
       { expiresIn: MOBILE_ACCESS_EXPIRY }
     );
@@ -862,19 +918,19 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     const newRefreshToken = generateRefreshToken();
     const newRefreshTokenHash = hashToken(newRefreshToken);
 
-    // Update session with new refresh token
     await db
       .update(mobileSessions)
       .set({
+        previousRefreshTokenHash: sessionRow[0]!.refreshTokenHash,
         refreshTokenHash: newRefreshTokenHash,
         lastSeenAt: new Date(),
       })
       .where(eq(mobileSessions.id, sessionRow[0]!.id));
 
-    // Atomically rotate refresh token in Redis (delete old + store new in one transaction)
+    // Rotate in Redis: set grace period TTL on old token
     await app.redis
       .multi()
-      .del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash))
+      .expire(REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash), REFRESH_TOKEN_GRACE_PERIOD)
       .setex(
         REDIS_KEYS.MOBILE_REFRESH_TOKEN(newRefreshTokenHash),
         MOBILE_REFRESH_TTL,
