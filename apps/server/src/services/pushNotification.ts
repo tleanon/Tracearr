@@ -665,13 +665,6 @@ export class PushNotificationService {
     const serverName = session.server?.name || 'Media Server';
     const formattedTitle = formatMediaTitle(session);
 
-    // Format duration
-    const durationMins = Math.round((session.durationMs || 0) / 60000);
-    const durationStr =
-      durationMins >= 60
-        ? `${Math.floor(durationMins / 60)}h ${durationMins % 60}m`
-        : `${durationMins}m`;
-
     // Get external URL for rich notification image
     const { externalUrl } = await getNetworkSettings();
     const imageUrl = buildPushPosterUrl(externalUrl, session.server?.id, session.thumbPath);
@@ -680,13 +673,12 @@ export class PushNotificationService {
       buildPushMessage(s.expoPushToken, s.deviceSecret, {
         title: serverName,
         subtitle: 'Stream Ended',
-        body: `${session.user.identityName ?? session.user.username}: ${formattedTitle} (${durationStr})`,
+        body: `${session.user.identityName ?? session.user.username}: ${formattedTitle}`,
         data: {
           type: 'stream_stopped',
           sessionId: session.id,
           userId: session.serverUserId,
           mediaTitle: session.mediaTitle,
-          durationMs: session.durationMs,
           serverId: session.server.id,
         },
         priority: 'default',
