@@ -1,0 +1,40 @@
+
+Tracearr deployed.
+{{- if .Values.ingress.enabled }}
+
+Access at:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+
+Tracearr uses WebSocket (Socket.io) and SSE for real-time updates.
+Your ingress controller must support connection upgrades and long timeouts.
+For nginx-ingress, set these annotations:
+  nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+{{- else }}
+
+Port-forward to access:
+
+  kubectl port-forward svc/{{ include "tracearr.fullname" . }} {{ .Values.tracearr.service.port }}:{{ .Values.tracearr.service.port }} -n {{ .Release.Namespace }}
+
+  http://localhost:{{ .Values.tracearr.service.port }}
+{{- end }}
+{{- if and .Values.secrets.autoGenerate (not .Values.secrets.existingSecret) (eq .Values.secrets.jwtSecret "") }}
+
+Secrets were auto-generated. Back them up for reinstalls:
+
+  kubectl get secret {{ include "tracearr.secretName" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.JWT_SECRET}' | base64 -d
+  kubectl get secret {{ include "tracearr.secretName" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.COOKIE_SECRET}' | base64 -d
+{{- end }}
+{{- if not .Values.timescale.enabled }}
+
+External DB: ensure timescaledb, timescaledb_toolkit, and pg_trgm extensions are enabled
+on {{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port }}.
+{{- end }}
+
+Changing the database password after initial deployment requires updating it
+inside PostgreSQL as well (ALTER USER tracearr PASSWORD '...').
