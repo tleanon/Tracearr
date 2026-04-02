@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       mobile_changed: ${{ steps.check.outputs.changed }}
-      previous_tag: ${{ steps.prev_tag.outputs.tag }}
+      previous_sha: ${{ steps.prev_tag.outputs.sha }}
 
     steps:
       - name: Checkout
@@ -48,36 +48,58 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.tag }}
 
-      - name: Get previous tag
+      - name: Find last successful mobile deploy commit
         id: prev_tag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ inputs.tag }}"
-          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
-          echo "tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
-          echo "Previous tag: $PREV_TAG"
+          # Get the commit SHA from the last workflow run where Deploy actually succeeded
+          # (not just the overall run, but specifically the deploy job)
+          LAST_DEPLOY_SHA=""
+          for RUN_ID in $(gh api \
+            "repos/${{ github.repository }}/actions/workflows/mobile-release.yml/runs?status=success&per_page=20" \
+            --jq '[.workflow_runs[] | .id] | .[]' 2>/dev/null); do
+            DEPLOY_STATUS=$(gh api \
+              "repos/${{ github.repository }}/actions/runs/${RUN_ID}/jobs" \
+              --jq '[.jobs[] | select(.name | startswith("Deploy Mobile"))] | .[0].conclusion // "skipped"')
+            if [ "$DEPLOY_STATUS" = "success" ]; then
+              LAST_DEPLOY_SHA=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}" --jq '.head_sha')
+              break
+            fi
+          done
+
+          echo "sha=$LAST_DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$LAST_DEPLOY_SHA" ]; then
+            # Resolve to a tag name for readability
+            DEPLOY_TAG=$(git tag --points-at "$LAST_DEPLOY_SHA" 2>/dev/null | head -1)
+            echo "Last mobile deploy: ${DEPLOY_TAG:-$LAST_DEPLOY_SHA}"
+          else
+            echo "No previous mobile deploy found"
+          fi
 
       - name: Check for mobile changes
         id: check
         run: |
-          PREV_TAG="${{ steps.prev_tag.outputs.tag }}"
           CURRENT_TAG="${{ inputs.tag }}"
+          PREV_SHA="${{ steps.prev_tag.outputs.sha }}"
 
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous tag found, assuming mobile changed"
+          if [ -z "$PREV_SHA" ]; then
+            echo "No previous mobile deploy found, assuming mobile changed"
             echo "changed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Check if any files in apps/mobile or shared packages changed
-          CHANGES=$(git diff --name-only "$PREV_TAG" "$CURRENT_TAG" -- apps/mobile/ packages/shared/ | wc -l)
+          # Check if any mobile-relevant files changed since last deploy
+          CHANGES=$(git diff --name-only "$PREV_SHA" "$CURRENT_TAG" -- apps/mobile/ packages/shared/ packages/translations/ | wc -l)
 
           if [ "$CHANGES" -gt 0 ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "Mobile changes detected: $CHANGES files"
-            git diff --name-only "$PREV_TAG" "$CURRENT_TAG" -- apps/mobile/ packages/shared/
+            git diff --name-only "$PREV_SHA" "$CURRENT_TAG" -- apps/mobile/ packages/shared/ packages/translations/
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No mobile changes since $PREV_TAG"
+            echo "No mobile changes since last deploy ($PREV_SHA)"
           fi
 
   # Deploy mobile app using fingerprint-based detection
