@@ -232,7 +232,7 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="flex cursor-help items-center gap-1 text-yellow-500">
-                                  <MapPin className="h-3 w-3" />
+                                  <MapPin className="h-3 w-3 shrink-0" />
                                   {locations.length} locations
                                 </span>
                               </TooltipTrigger>
@@ -254,7 +254,7 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
                             </Tooltip>
                           ) : (
                             <span className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
+                              <MapPin className="h-3 w-3 shrink-0" />
                               {formatLocationShort(primaryLocation)}
                             </span>
                           )}

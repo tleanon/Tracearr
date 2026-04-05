@@ -335,7 +335,7 @@ export const HistoryTableRow = memo(
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-1.5">
-                      <Globe className="text-muted-foreground h-3.5 w-3.5" />
+                      <Globe className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                       <span className="truncate text-sm">
                         {session.geoCity || getCountryName(session.geoCountry)}
                       </span>
