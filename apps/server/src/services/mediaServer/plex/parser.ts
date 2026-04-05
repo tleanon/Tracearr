@@ -13,6 +13,7 @@ import {
   parseOptionalNumber,
   parseArray,
   parseSelectedArrayElement,
+  findSelectedElement,
 } from '../../../utils/parsing.js';
 import { normalizeStreamDecisions } from '../../../utils/transcodeNormalizer.js';
 import type {
@@ -518,8 +519,13 @@ function extractStreamDetails(
  * Parse original media metadata from /library/metadata/{ratingKey} response.
  * This provides the TRUE source file information, which is needed because
  * during transcodes, the session's Media/Part/Stream data shows transcoded output.
+ *
+ * @param targetMediaId - When provided, selects the Media version with this id
  */
-export function parseMediaMetadataResponse(data: unknown): PlexOriginalMedia | null {
+export function parseMediaMetadataResponse(
+  data: unknown,
+  targetMediaId?: string,
+): PlexOriginalMedia | null {
   const container = data as { MediaContainer?: { Metadata?: unknown[] } };
   const metadata = container?.MediaContainer?.Metadata;
   if (!Array.isArray(metadata) || metadata.length === 0) return null;
@@ -528,8 +534,11 @@ export function parseMediaMetadataResponse(data: unknown): PlexOriginalMedia | n
   const mediaArray = item?.Media as Array<Record<string, unknown>> | undefined;
   if (!mediaArray || mediaArray.length === 0) return null;
 
-  // Get the first media (or selected one if multiple versions exist)
-  const selectedMedia = mediaArray.find((m) => parseString(m.selected) === '1') ?? mediaArray[0];
+  // Match by media ID when provided, fall back to selected or first
+  const selectedMedia =
+    (targetMediaId ? mediaArray.find((m) => String(m.id) === targetMediaId) : undefined) ??
+    mediaArray.find((m) => parseString(m.selected) === '1') ??
+    mediaArray[0];
   const parts = selectedMedia?.Part as Array<Record<string, unknown>> | undefined;
   const part = parts?.[0];
 
@@ -840,18 +849,28 @@ export function parseSession(
  * Parse Plex sessions API response
  *
  * @param data - Raw response from /status/sessions
- * @param originalMediaMap - Optional map of ratingKey -> PlexOriginalMedia for transcoding sessions
+ * @param originalMediaMap - Optional map of ratingKey (or "ratingKey:mediaId") -> PlexOriginalMedia
+ *   for transcoding sessions. Composite keys take precedence over ratingKey-only keys.
  */
 export function parseSessionsResponse(
   data: unknown,
-  originalMediaMap?: Map<string, PlexOriginalMedia>
+  originalMediaMap?: Map<string, PlexOriginalMedia>,
 ): MediaSession[] {
   const container = data as { MediaContainer?: { Metadata?: unknown[] } };
   const metadata = container?.MediaContainer?.Metadata;
   return parseArray(metadata, (item) => {
     const session = item as Record<string, unknown>;
     const ratingKey = parseString(session.ratingKey);
-    const originalMedia = originalMediaMap?.get(ratingKey) ?? null;
+
+    const mediaArray = session.Media as Array<Record<string, unknown>> | undefined;
+    const selectedMedia = findSelectedElement<Record<string, unknown>>(mediaArray);
+    const sessionMediaId = selectedMedia?.id != null ? String(selectedMedia.id) : undefined;
+
+    const originalMedia =
+      (sessionMediaId ? originalMediaMap?.get(`${ratingKey}:${sessionMediaId}`) : undefined) ??
+      originalMediaMap?.get(ratingKey) ??
+      null;
+
     return parseSession(session, originalMedia);
   });
 }
@@ -861,9 +880,12 @@ export function parseSessionsResponse(
  * fetching original media metadata for accurate source info.
  *
  * @param data - Raw response from /status/sessions
- * @returns Array of ratingKeys for transcoding sessions
+ * @returns Array of `{ ratingKey, sessionMediaId }` for transcoding sessions,
+ *   where `sessionMediaId` is the id of the Media element the session is playing
  */
-export function getTranscodingSessionRatingKeys(data: unknown): string[] {
+export function getTranscodingSessionRatingKeys(
+  data: unknown,
+): Array<{ ratingKey: string; sessionMediaId: string | undefined }> {
   const container = data as { MediaContainer?: { Metadata?: unknown[] } };
   const metadata = container?.MediaContainer?.Metadata;
   if (!Array.isArray(metadata)) return [];
@@ -878,8 +900,15 @@ export function getTranscodingSessionRatingKeys(data: unknown): string[] {
       const audioDecision = parseOptionalString(transcodeSession.audioDecision);
       return videoDecision === 'transcode' || audioDecision === 'transcode';
     })
-    .map((item) => parseString((item as Record<string, unknown>).ratingKey))
-    .filter((key) => key !== ''); // Filter out empty keys
+    .map((item) => {
+      const session = item as Record<string, unknown>;
+      const ratingKey = parseString(session.ratingKey);
+      const mediaArray = session.Media as Array<Record<string, unknown>> | undefined;
+      const selectedMedia = findSelectedElement<Record<string, unknown>>(mediaArray);
+      const sessionMediaId = selectedMedia?.id != null ? String(selectedMedia.id) : undefined;
+      return { ratingKey, sessionMediaId };
+    })
+    .filter((entry) => entry.ratingKey !== '');
 }
 
 // ============================================================================
