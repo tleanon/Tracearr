@@ -81,48 +81,59 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       timeout: 10000, // 10s timeout to prevent polling hangs
     });
 
-    // Identify transcoding sessions that need original media metadata
-    const transcodingRatingKeys = getTranscodingSessionRatingKeys(data);
+    const transcodingEntries = getTranscodingSessionRatingKeys(data);
 
-    // Fetch original media metadata for transcoding sessions in parallel
     let originalMediaMap: Map<string, PlexOriginalMedia> | undefined;
-    if (transcodingRatingKeys.length > 0) {
+    if (transcodingEntries.length > 0) {
+      // Deduplicate ratingKeys — multiple sessions may play different versions of the same item
+      const uniqueRatingKeys = [...new Set(transcodingEntries.map((e) => e.ratingKey))];
       const metadataResults = await Promise.allSettled(
-        transcodingRatingKeys.map((ratingKey) => this.getMediaMetadata(ratingKey))
+        uniqueRatingKeys.map((ratingKey) => this.getMediaMetadata(ratingKey)),
       );
 
-      originalMediaMap = new Map();
+      const rawMetadataByRatingKey = new Map<string, unknown>();
       metadataResults.forEach((result, index) => {
-        const ratingKey = transcodingRatingKeys[index];
+        const ratingKey = uniqueRatingKeys[index];
         if (result.status === 'fulfilled' && result.value && ratingKey) {
-          originalMediaMap!.set(ratingKey, result.value);
+          rawMetadataByRatingKey.set(ratingKey, result.value);
         }
       });
+
+      originalMediaMap = new Map();
+      for (const { ratingKey, sessionMediaId } of transcodingEntries) {
+        const rawData = rawMetadataByRatingKey.get(ratingKey);
+        if (!rawData) continue;
+
+        const parsed = parseMediaMetadataResponse(rawData, sessionMediaId);
+        if (!parsed) continue;
+
+        if (sessionMediaId) {
+          originalMediaMap.set(`${ratingKey}:${sessionMediaId}`, parsed);
+        } else {
+          originalMediaMap.set(ratingKey, parsed);
+        }
+      }
     }
 
     return parseSessionsResponse(data, originalMediaMap);
   }
 
   /**
-   * Get original media metadata for a specific item
+   * Get raw media metadata for a specific item.
    *
-   * Used to get true source file information (bitrate, resolution, codec)
-   * which is needed because Plex's session data shows transcoded output
-   * during transcodes.
+   * Returns the raw response so the caller can parse it with different targetMediaId
+   * values per session (e.g., when multiple sessions play different versions of the same item).
    *
    * @param ratingKey - The media item's ratingKey
-   * @returns Original media metadata or null if unavailable
    */
-  async getMediaMetadata(ratingKey: string): Promise<PlexOriginalMedia | null> {
+  async getMediaMetadata(ratingKey: string): Promise<unknown> {
     try {
-      const data = await fetchJson<unknown>(`${this.baseUrl}/library/metadata/${ratingKey}`, {
+      return await fetchJson<unknown>(`${this.baseUrl}/library/metadata/${ratingKey}`, {
         headers: this.buildHeaders(),
         service: 'plex',
         timeout: 5000, // Short timeout since this is supplementary data
       });
-      return parseMediaMetadataResponse(data);
     } catch {
-      // Return null if metadata fetch fails - caller will use fallback
       return null;
     }
   }
