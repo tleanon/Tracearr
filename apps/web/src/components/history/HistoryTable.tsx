@@ -25,11 +25,7 @@ import {
   ArrowDown,
   Clapperboard,
 } from 'lucide-react';
-import {
-  TableCell,
-  TableHead,
-  TableRow,
-} from '@/components/ui/table';
+import { TableCell, TableHead, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -87,20 +83,25 @@ const ENGAGEMENT_TIER_CONFIG: Record<
   },
 };
 
-// Calculate engagement tier from progress percentage
-// Uses 85% threshold to match WATCH_COMPLETION_THRESHOLD
-function getEngagementTier(progress: number): EngagementTier {
+function getEngagementTier(progress: number, hasDuration: boolean): EngagementTier {
+  if (!hasDuration) return 'unknown';
   if (progress >= 200) return 'rewatched';
   if (progress >= 85) return 'watched';
   if (progress >= 50) return 'engaged';
   if (progress >= 20) return 'sampled';
-  if (progress > 0) return 'abandoned';
-  return 'unknown';
+  return 'abandoned';
 }
 
-// Engagement tier badge component
-function EngagementTierBadge({ progress, state }: { progress: number; state: SessionState }) {
-  const tier = getEngagementTier(progress);
+function EngagementTierBadge({
+  progress,
+  state,
+  hasDuration,
+}: {
+  progress: number;
+  state: SessionState;
+  hasDuration: boolean;
+}) {
+  const tier = getEngagementTier(progress, hasDuration);
   if (tier === 'unknown' || state !== 'stopped') return null;
 
   const config = ENGAGEMENT_TIER_CONFIG[tier];
@@ -211,7 +212,19 @@ interface HistoryTableRowProps {
 // Session row component with column visibility support
 export const HistoryTableRow = memo(
   forwardRef<HTMLTableRowElement, HistoryTableRowProps>(
-    ({ session, onClick, columnVisibility, selectable, isSelected, onSelect, style, 'data-index': dataIndex }, ref) => {
+    (
+      {
+        session,
+        onClick,
+        columnVisibility,
+        selectable,
+        isSelected,
+        onSelect,
+        style,
+        'data-index': dataIndex,
+      },
+      ref
+    ) => {
       const { title: primary, subtitle: secondary } = getMediaDisplay(session);
       const progress = getProgress(session);
 
@@ -269,18 +282,20 @@ export const HistoryTableRow = memo(
                     src={getAvatarUrl(session.serverId, session.user.thumbUrl, 24) ?? undefined}
                   />
                   <AvatarFallback className="text-xs">
-                    {(session.user.identityName ?? session.user.username)?.[0]?.toUpperCase() ?? '?'}
+                    {(session.user.identityName ?? session.user.username)?.[0]?.toUpperCase() ??
+                      '?'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <span className="block truncate text-sm">
                     {session.user.identityName ?? session.user.username}
                   </span>
-                  {session.user.identityName && session.user.identityName !== session.user.username && (
-                    <span className="text-muted-foreground block truncate text-xs">
-                      @{session.user.username}
-                    </span>
-                  )}
+                  {session.user.identityName &&
+                    session.user.identityName !== session.user.username && (
+                      <span className="text-muted-foreground block truncate text-xs">
+                        @{session.user.username}
+                      </span>
+                    )}
                 </div>
               </Link>
             </TableCell>
@@ -294,7 +309,11 @@ export const HistoryTableRow = memo(
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">{primary}</span>
-                    <EngagementTierBadge progress={progress} state={session.state} />
+                    <EngagementTierBadge
+                      progress={progress}
+                      state={session.state}
+                      hasDuration={!!session.totalDurationMs}
+                    />
                   </div>
                   {secondary && (
                     <div className="text-muted-foreground truncate text-xs">{secondary}</div>
@@ -312,7 +331,9 @@ export const HistoryTableRow = memo(
                   <div>
                     <div className="truncate text-sm">{session.platform ?? '—'}</div>
                     {session.product && (
-                      <div className="text-muted-foreground truncate text-xs">{session.product}</div>
+                      <div className="text-muted-foreground truncate text-xs">
+                        {session.product}
+                      </div>
                     )}
                   </div>
                 </TooltipTrigger>
@@ -337,7 +358,11 @@ export const HistoryTableRow = memo(
                     <div className="flex items-center gap-1.5">
                       <Globe className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                       <span className="truncate text-sm">
-                        {formatLocationCompact(session.geoCity, session.geoRegion, session.geoCountry)}
+                        {formatLocationCompact(
+                          session.geoCity,
+                          session.geoRegion,
+                          session.geoCountry
+                        )}
                       </span>
                     </div>
                   </TooltipTrigger>
@@ -345,7 +370,9 @@ export const HistoryTableRow = memo(
                     <div className="space-y-1 text-xs">
                       {session.geoCity && <div>City: {session.geoCity}</div>}
                       {session.geoRegion && <div>Region: {session.geoRegion}</div>}
-                      {session.geoCountry && <div>Country: {getCountryName(session.geoCountry)}</div>}
+                      {session.geoCountry && (
+                        <div>Country: {getCountryName(session.geoCountry)}</div>
+                      )}
                       {session.ipAddress && <div>IP: {session.ipAddress}</div>}
                     </div>
                   </TooltipContent>
@@ -408,7 +435,9 @@ export const HistoryTableRow = memo(
                 </TooltipTrigger>
                 <TooltipContent>
                   <div className="space-y-1 text-xs">
-                    <div>Watch time: {formatDuration(session.durationMs, { style: 'compact' })}</div>
+                    <div>
+                      Watch time: {formatDuration(session.durationMs, { style: 'compact' })}
+                    </div>
                     {session.pausedDurationMs > 0 && (
                       <div>
                         Paused: {formatDuration(session.pausedDurationMs, { style: 'compact' })}
@@ -416,7 +445,8 @@ export const HistoryTableRow = memo(
                     )}
                     {session.totalDurationMs && (
                       <div>
-                        Media length: {formatDuration(session.totalDurationMs, { style: 'compact' })}
+                        Media length:{' '}
+                        {formatDuration(session.totalDurationMs, { style: 'compact' })}
                       </div>
                     )}
                     {session.segmentCount && session.segmentCount > 1 && (
@@ -617,10 +647,13 @@ export function HistoryTable({
   // Initial loading state: render full-width table with skeleton rows (no virtualizer needed)
   if (isLoading) {
     return (
-      <div className="relative overflow-auto scrollbar-thin" style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}>
+      <div
+        className="scrollbar-thin relative overflow-auto"
+        style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
+      >
         <table className="w-full caption-bottom text-sm">
           <thead
-            className="sticky top-0 z-10 bg-card [&_tr]:border-b"
+            className="bg-card sticky top-0 z-10 [&_tr]:border-b"
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
           >
             <tr>
@@ -649,10 +682,13 @@ export function HistoryTable({
   // Empty state
   if (sessions.length === 0) {
     return (
-      <div className="relative overflow-auto scrollbar-thin" style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}>
+      <div
+        className="scrollbar-thin relative overflow-auto"
+        style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
+      >
         <table className="w-full caption-bottom text-sm">
           <thead
-            className="sticky top-0 z-10 bg-card [&_tr]:border-b"
+            className="bg-card sticky top-0 z-10 [&_tr]:border-b"
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
           >
             <tr>
@@ -687,12 +723,12 @@ export function HistoryTable({
   return (
     <div
       ref={scrollContainerRef}
-      className="relative overflow-auto scrollbar-thin"
+      className="scrollbar-thin relative overflow-auto"
       style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
     >
       <table className="w-full caption-bottom text-sm">
         <thead
-          className="sticky top-0 z-10 bg-card [&_tr]:border-b"
+          className="bg-card sticky top-0 z-10 [&_tr]:border-b"
           style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
         >
           <tr>
