@@ -52,7 +52,8 @@
     "openSettings": "Open Settings",
     "viewProfile": "View Profile",
     "viewOnGithub": "View on GitHub",
-    "later": "Later"
+    "later": "Later",
+    "previous": "Previous"
   },
   "states": {
     "loading": "Loading...",
@@ -73,7 +74,8 @@
     "saving": "Saving...",
     "deleting": "Deleting...",
     "dismissing": "Dismissing...",
-    "acknowledging": "Acknowledging..."
+    "acknowledging": "Acknowledging...",
+    "completed": "Completed"
   },
   "playback": {
     "playing": "Playing",
@@ -148,7 +150,15 @@
     "sessionDetails": "Session Details",
     "recentSessions": "Recent Sessions",
     "activeStreams": "Active Streams",
-    "days": "days"
+    "days": "days",
+    "totalSessions": "Total Sessions",
+    "sessions": "Sessions",
+    "apiKey": "API Key",
+    "rank": "Rank",
+    "data": "Data",
+    "size": "Size",
+    "items": "Items",
+    "name": "Name"
   },
   "search": {
     "placeholder": "Search...",
@@ -162,10 +172,16 @@
   },
   "media": {
     "movie": "Movie",
+    "movie_plural": "Movies",
     "episode": "Episode",
+    "episode_plural": "Episodes",
     "track": "Track",
+    "track_plural": "Tracks",
     "liveTV": "Live TV",
-    "photo": "Photo"
+    "photo": "Photo",
+    "tv": "TV",
+    "tvShows": "TV Shows",
+    "music": "Music"
   },
   "servers": {
     "plex": "Plex",
@@ -264,7 +280,8 @@
     "noDeviceData": "No device data available",
     "noLocationData": "No location data available",
     "noJobHistory": "No job history yet",
-    "noSessionsFound": "No sessions found"
+    "noSessionsFound": "No sessions found",
+    "noUserData": "No user data available"
   },
   "confirmations": {
     "deleteTitle": "Confirm Delete",

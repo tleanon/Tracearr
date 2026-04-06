@@ -73,7 +73,8 @@
     "noTerminationsFound": "No stream terminations for this user.",
     "byRule": "By / Rule",
     "manual": "Manual",
-    "unknownRule": "Unknown rule"
+    "unknownRule": "Unknown rule",
+    "adjustTrustScore": "Adjust Trust Score"
   },
   "history": {
     "title": "History",
@@ -91,7 +92,79 @@
     "topMovies": "Top Movies",
     "topShows": "Top TV Shows",
     "noMoviePlays": "No movie plays in this period",
-    "noShowPlays": "No TV show plays in this period"
+    "noShowPlays": "No TV show plays in this period",
+    "overview": {
+      "description": "Library health and growth metrics",
+      "lastUpdated": "Last updated:",
+      "totalItems": "Total Items",
+      "shows": "shows",
+      "added": "Added",
+      "libraryGrowth": "Library Growth",
+      "failedToLoad": "Failed to load library statistics",
+      "failedToLoadDesc": "Could not fetch library data. Please try again.",
+      "thisPeriod": "this period",
+      "thisWeek": "this week",
+      "thisMonth": "this month",
+      "thisYear": "this year"
+    },
+    "quality": {
+      "title": "Quality",
+      "description": "Resolution and codec distribution",
+      "qualityEvolution": "Quality Evolution",
+      "all": "All",
+      "failedToLoad": "Failed to load quality data",
+      "failedToLoadDesc": "Could not fetch quality data. Please try again."
+    },
+    "storage": {
+      "title": "Storage",
+      "description": "Storage usage, predictions, and optimization",
+      "totalStorage": "Total Storage",
+      "growthRate": "Growth Rate",
+      "duplicates": "Duplicates",
+      "groups": "groups",
+      "recoverable": "recoverable",
+      "staleContent": "Stale Content",
+      "staleContentDesc": "Content that may be candidates for removal",
+      "items": "items",
+      "unused": "unused",
+      "storageTrend": "Storage Trend",
+      "confidence": "Confidence",
+      "confidenceHigh": "High",
+      "confidenceMedium": "Medium",
+      "confidenceLow": "Low",
+      "zeroGrowth": "0 GB/mo",
+      "predictions": "Predictions",
+      "contentROI": "Content ROI",
+      "contentROIDesc": "Watch value per storage cost",
+      "avgHoursPerGB": "avg hours/GB",
+      "insufficientData": "Insufficient data",
+      "of": "of",
+      "days": "days",
+      "failedToLoad": "Failed to load storage data",
+      "failedToLoadDesc": "Could not fetch storage data. Please try again."
+    },
+    "watch": {
+      "title": "Watch Analytics",
+      "description": "Viewing behavior and content engagement",
+      "watched": "Watched",
+      "percentWatched": "% watched",
+      "totalWatchTime": "Total Watch Time",
+      "avgPerItem": "avg per item",
+      "completed": "Completed",
+      "peakHour": "Peak Hour",
+      "viewingHours": "Viewing Hours",
+      "peak": "Peak:",
+      "monthlyTrends": "Monthly Trends",
+      "busiest": "Busiest:",
+      "quietest": "Quietest:",
+      "bingeHighlights": "Binge Highlights",
+      "bingeHighlightsDesc": "Shows with the most intensive viewing patterns",
+      "bingeSessions": "binge sessions",
+      "noData": "No watch data yet",
+      "noDataDesc": "Watch analytics will appear here once content has been played. Check back after some viewing activity.",
+      "failedToLoad": "Failed to load watch analytics",
+      "failedToLoadDesc": "Could not fetch watch data."
+    }
   },
   "activity": {
     "title": "Activity",
@@ -141,7 +214,14 @@
       "daysInactive": "Days Inactive",
       "threshold": "Threshold",
       "lastActivity": "Last Activity",
-      "neverActive": "Never active"
+      "neverActive": "Never active",
+      "conditionEvidence": "Condition Evidence",
+      "conditionGroup": "Condition Group {{index}}",
+      "matched": "{{matched}}/{{total}} matched",
+      "actual": "Actual",
+      "relatedSessions": "{{count}} related session",
+      "relatedSessions_one": "{{count}} related session",
+      "relatedSessions_other": "{{count}} related sessions"
     }
   },
   "rules": {
@@ -207,7 +287,11 @@
     "blocked": "Blocked",
     "allowed": "Allowed",
     "none": "None",
-    "inactiveFor": "Inactive for {{value}} {{unit}}"
+    "inactiveFor": "Inactive for {{value}} {{unit}}",
+    "classicRule": "Classic Rule",
+    "customRule": "Custom Rule",
+    "chooseTemplate": "Choose a Rule Template",
+    "chooseTemplateDesc": "Select a pre-configured rule type to get started quickly."
   },
   "terminateStream": {
     "title": "Terminate Stream",
@@ -260,6 +344,8 @@
       "unlinkConfirm": "Are you sure you want to unlink this Plex account? You won't be able to add servers from this account until you link it again."
     },
     "notifications": {
+      "title": "Notification Agents",
+      "description": "Configure notification channels and select which events each agent should receive.",
       "loadingSettings": "Loading notification settings...",
       "addAgent": "Add Notification Agent",
       "editAgent": "Edit Notification Agent",
@@ -292,8 +378,7 @@
       "running": "Running...",
       "lastRun": "Last run",
       "nextRun": "Next run",
-      "schedule": "Schedule",
-      "jobHistory": "Job History"
+      "schedule": "Schedule"
     },
     "mobile": {
       "editDisplayName": "Edit Display Name",
@@ -320,5 +405,117 @@
       "restarting": "Restarting services",
       "complete": "Restore complete"
     }
+  },
+  "map": {
+    "allUsers": "All users",
+    "allTypes": "All types",
+    "heatmap": "Heatmap",
+    "circles": "Circles",
+    "streams": "streams",
+    "locations": "locations",
+    "allActivity": "All activity"
+  },
+  "devices": {
+    "title": "Device Compatibility",
+    "description": "See which devices direct play vs transcode each codec",
+    "directPlayRate": "Direct Play Rate",
+    "videoAndAudio": "Video + audio",
+    "uniqueDevices": "Unique Devices",
+    "uniqueCodecs": "Unique Codecs",
+    "deviceHealth": "Device Health",
+    "deviceHealthDesc": "Direct play rate by device type",
+    "transcodeHotspots": "Transcode Hotspots",
+    "transcodeHotspotsDesc": "Combinations causing the most transcodes",
+    "deviceAndCodec": "Device + Codec",
+    "transcodes": "Transcodes",
+    "pctOfTotal": "% of Total",
+    "noTranscodeHotspots": "No transcode hotspots",
+    "compatibilityMatrix": "Compatibility Matrix",
+    "compatibilityMatrixDesc": "Direct play rates by device and video codec. Sorted by session volume.",
+    "noDeviceDataPeriod": "No device data in this period",
+    "legend": "Legend:",
+    "directPlayHigh": "≥80% Direct",
+    "directPlayMid": "50-79%",
+    "directPlayLow": "<50%",
+    "topTranscodingUsers": "Top Transcoding Users",
+    "topTranscodingUsersDesc": "Users causing the most transcodes on your server",
+    "noTranscodingUsers": "No transcoding users found"
+  },
+  "statsBandwidth": {
+    "title": "Bandwidth",
+    "description": "Streaming bandwidth usage and bitrate analysis",
+    "dataTransferred": "Data Transferred",
+    "avgBitrate": "Avg Bitrate",
+    "avgBitrateMbps": "Avg Bitrate (Mbps)",
+    "peakBitrate": "Peak: {{value}} Mbps",
+    "totalWatchTime": "Total Watch Time",
+    "uniqueUsers": "Unique Users",
+    "dailyUsage": "Daily Bandwidth Usage",
+    "dailyUsageDesc": "Average bitrate and session count over time",
+    "topUsers": "Top Bandwidth Users",
+    "topUsersDesc": "Users consuming the most bandwidth",
+    "noData": "No bandwidth data available"
+  },
+  "statsUsers": {
+    "noActivity": "No activity yet",
+    "noActivityDesc": "Start streaming to see your top users here",
+    "top3": "Top 3",
+    "runnersUp": "Runners Up"
+  },
+  "plexCallback": {
+    "authComplete": "Authentication complete",
+    "windowWillClose": "This window will close automatically..."
+  },
+  "apiDocs": {
+    "backToSettings": "Back to Settings",
+    "apiKeyAutoLoaded": "API key auto-loaded",
+    "noApiKey": "No API key generated - create one in Settings to test endpoints"
+  },
+  "debug": {
+    "title": "Debug Tools",
+    "description": "Administrative utilities for troubleshooting and data management",
+    "overview": "Overview",
+    "librarySnapshots": "Library Snapshots",
+    "tasks": "Tasks",
+    "logs": "Logs",
+    "plexAccounts": "Plex Accounts",
+    "terminations": "Terminations",
+    "libraryItems": "Library Items",
+    "environment": "Environment",
+    "systemInformation": "System Information",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "uptime": "Uptime",
+    "database": "Database",
+    "databaseDesc": "Database size and table statistics",
+    "totalSize": "Total Size",
+    "maintenance": "Maintenance",
+    "destructiveActions": "Destructive Actions",
+    "refreshAggregates": "Refresh Aggregates",
+    "clearStuckJobs": "Clear Stuck Jobs",
+    "obliterateAllJobs": "Obliterate All Jobs",
+    "clearQueryCache": "Clear Query Cache",
+    "clearMobileDevices": "Clear Mobile Devices",
+    "clearViolations": "Clear Violations",
+    "clearRules": "Clear Rules",
+    "clearTerminationLogs": "Clear Termination Logs",
+    "clearLibraryCache": "Clear Library Cache",
+    "clearSessions": "Clear Sessions",
+    "clearUsers": "Clear Users",
+    "clearServers": "Clear Servers",
+    "factoryReset": "Factory Reset",
+    "manageSnapshots": "Manage library snapshots used for Storage Trend and Quality Evolution charts",
+    "suspiciousOnly": "Suspicious only",
+    "load": "Load",
+    "noSuspiciousSnapshots": "No suspicious snapshots found",
+    "clickLoadToView": "Click \"Load\" to view snapshots",
+    "deleteSelected": "Delete Selected",
+    "deleteAllSuspicious": "Delete All Suspicious",
+    "suspicious": "Suspicious",
+    "ok": "OK",
+    "selected": "selected",
+    "snapshots": "snapshot(s)",
+    "of": "of",
+    "logExplorerUnavailable": "Log explorer is only available in Docker environments"
   }
 }
