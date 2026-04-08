@@ -158,7 +158,16 @@
     "data": "Dane",
     "size": "Rozmiar",
     "items": "Przedmioty",
-    "name": "Nazwisko"
+    "name": "Nazwisko",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "Szukaj...",
@@ -241,7 +250,13 @@
     "library_one": "{{count}} biblioteka",
     "library_other": "{{count}} biblioteki",
     "error_one": "{{count}} błąd",
-    "error_other": "{{count}} błędy"
+    "error_other": "{{count}} błędy",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "Nie wykryto żadnych zmian"
