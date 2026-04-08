@@ -158,7 +158,16 @@
     "data": "Данные",
     "size": "Размер",
     "items": "Предметы",
-    "name": "Наименование"
+    "name": "Наименование",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "Поиск...",
@@ -241,7 +250,13 @@
     "library_one": "Библиотека {{count}}",
     "library_other": "Библиотеки {{count}}",
     "error_one": "Ошибка {{count}}",
-    "error_other": "{{count}} ошибок"
+    "error_other": "{{count}} ошибок",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "Изменения не обнаружены"
