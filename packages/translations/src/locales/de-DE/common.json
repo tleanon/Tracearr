@@ -158,7 +158,16 @@
     "data": "Daten",
     "size": "Größe",
     "items": "Artikel",
-    "name": "Name"
+    "name": "Name",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "Suchen...",
@@ -241,7 +250,13 @@
     "library_one": "{{count}} Bibliothek",
     "library_other": "{{count}} Bibliotheken",
     "error_one": "{{count}} Fehler",
-    "error_other": "{{count}} Fehler"
+    "error_other": "{{count}} Fehler",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "Keine Änderungen erkannt"
