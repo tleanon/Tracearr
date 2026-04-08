@@ -158,7 +158,16 @@
     "data": "Data",
     "size": "Størrelse",
     "items": "Elementer",
-    "name": "Navn"
+    "name": "Navn",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "Søk...",
@@ -241,7 +250,13 @@
     "library_one": "{{count}} bibliotek",
     "library_other": "{{count}} biblioteker",
     "error_one": "{{count}} feil",
-    "error_other": "{{count}} feil"
+    "error_other": "{{count}} feil",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "Ingen endringer oppdaget"
