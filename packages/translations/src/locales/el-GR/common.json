@@ -158,7 +158,16 @@
     "data": "Δεδομένα",
     "size": "Μέγεθος",
     "items": "Στοιχεία",
-    "name": "Όνομα"
+    "name": "Όνομα",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "Αναζήτηση...",
@@ -241,7 +250,13 @@
     "library_one": "{{count}} library",
     "library_other": "{{count}} libraries",
     "error_one": "{{count}} σφάλμα",
-    "error_other": "{{count}} errors"
+    "error_other": "{{count}} errors",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "Δεν εντοπίστηκαν αλλαγές"
