@@ -84,7 +84,7 @@
     "playbackEnded": "Wiedergabe beendet",
     "exceededStreamLimit": "Benutzer überschritten Streamlimit",
     "newDeviceDetected": "Neues Gerät für Benutzer erkannt",
-    "trustScoreDegraded": "User trust score degraded",
+    "trustScoreDegraded": "Benutzer-Vertrauens-Score verschlechtert",
     "serverUnreachable": "Medienserver nicht erreichbar",
     "serverBackOnline": "Medienserver wieder online",
     "allViolationTypes": "Alle Verletzungstypen",
@@ -139,25 +139,25 @@
   "users": {
     "owner": "Besitzer",
     "noUsers": "Keine Benutzer",
-    "usersWillAppear": "Users will appear here after syncing with your media server",
-    "noUsersMatch": "No users match \"{{query}}\""
+    "usersWillAppear": "Benutzer werden hier nach der Synchronisierung mit Ihrem Medienserver angezeigt",
+    "noUsersMatch": "Keine Benutzer gefunden zu \"{{query}}\""
   },
   "activity": {
     "playsOverTime": "Wiedergaben im Zeitverlauf",
     "concurrentStreams": "Gleichzeitige Streams",
     "platforms": "Plattformen",
-    "playbackQuality": "Playback Quality"
+    "playbackQuality": "Wiedergabequalität"
   },
   "unauthenticated": {
-    "connectionLost": "Connection Lost",
-    "accessRevoked": "Your access to {{serverName}} was revoked. Ask the server owner for a new pairing code.",
-    "scanQrCode": "Scan QR Code"
+    "connectionLost": "Verbindung abgebrochen",
+    "accessRevoked": "Ihr Zugriff auf {{serverName}} wurde widerrufen. Fragen Sie den Serverbesitzer nach einem neuen Paarcode.",
+    "scanQrCode": "QR-Code scannen"
   },
   "serverSelector": {
-    "servers": "Servers",
-    "selectServers": "Select Servers",
-    "serversSelected": "{{selected}} of {{total}} servers selected"
+    "servers": "Server",
+    "selectServers": "Server auswählen",
+    "serversSelected": "{{selected}} von {{total}} Servern ausgewählt"
   },
-  "reconnected": "Reconnected",
-  "actionsExecuted": "Actions Executed"
+  "reconnected": "Wiederverbunden",
+  "actionsExecuted": "Ausgeführte Aktionen"
 }
