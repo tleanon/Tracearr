@@ -9,7 +9,11 @@
     "scanQrCodeInstead": "Scanați codul QR în schimb",
     "enterManually": "Introduceți manual URL-ul și Token-ul",
     "cameraPermissionRequired": "Este necesară permisiunea camerei pentru a scana codurile QR",
-    "scanQrInstructions": "Deschide setările → Aplicaţia mobilă în tabloul de bord Tracearr şi scanează codul QR"
+    "scanQrInstructions": "Deschide setările → Aplicaţia mobilă în tabloul de bord Tracearr şi scanează codul QR",
+    "urlPlaceholder": "https://tracearr.example.com",
+    "tokenPlaceholder": "trr_mob_...",
+    "missingToken": "Missing Token",
+    "pleaseEnterToken": "Please enter your access token"
   },
   "errors": {
     "missingFields": "Câmpuri lipsă",
@@ -18,6 +22,7 @@
     "serverUrlMustStartWith": "URL-ul serverului trebuie să înceapă cu http:// sau http://",
     "pleaseEnterValidUrl": "Te rog introdu un URL de server valid",
     "pairingFailed": "Asociere eșuată",
+    "unableToPair": "Unable to pair with server",
     "invalidQrCode": "Invalid QR code",
     "invalidQrCodeMissingData": "Cod QR invalid: date lipsă",
     "invalidQrCodeFormat": "Format de cod QR invalid. Vă rugăm să generați un nou cod.",
@@ -26,22 +31,39 @@
     "invalidServerUrlInQr": "URL server nevalid în codul QR",
     "tooManyPairingAttempts": "Prea multe încercări de împerechere. Vă rugăm așteptați câteva minute.",
     "invalidOrExpiredToken": "Token de asociere invalid sau expirat.",
-    "invalidPairingRequest": "Cerere de asociere nevalidă. Verificați tokenul."
+    "invalidPairingRequest": "Cerere de asociere nevalidă. Verificați tokenul.",
+    "errorDetails": "Error Details:",
+    "componentStack": "Component Stack:",
+    "connectionLost": "Connection lost",
+    "failedToLoadSession": "Failed to load session"
   },
   "settings": {
     "preferences": "Preferințe",
+    "notifications": "Notifications",
+    "configureNotifications": "Configure push notification preferences",
+    "language": "Language",
     "community": "Comunitate",
     "discord": "Discord",
     "joinCommunity": "Alătură-te comunității",
+    "docs": "Docs",
+    "readDocs": "Read the documentation",
+    "website": "Website",
+    "visitWebsite": "Visit tracearr.com",
     "github": "GitHub",
     "viewSourceCode": "Vezi codul sursă",
+    "sponsor": "Sponsor",
+    "supportDevelopment": "Support development",
     "account": "Cont",
+    "disconnect": "Disconnect",
     "disconnectServer": "Deconectare server",
     "disconnectConfirm": "Ești sigur că vrei să te deconectezi de la \"{{serverName}}\"? Va trebui să asociezi din nou pentru a utiliza aplicația.",
     "disconnectConfirmGeneric": "Sunteți sigur că doriți să vă deconectați? Va trebui să vă conectați din nou pentru a utiliza aplicația.",
-    "currentlyConnected": "Conectat în prezent la {{serverName}}"
+    "currentlyConnected": "Conectat în prezent la {{serverName}}",
+    "version": "Version {{version}}",
+    "build": "Build {{build}}"
   },
   "navigation": {
+    "home": "Home",
     "selectServer": "Selectare server",
     "server": "Server",
     "navigation": "Navigation"
@@ -55,6 +77,87 @@
     "testFailed": "Test eșuat",
     "failedToSendTest": "Trimiterea notificării de test a eșuat",
     "loadingPreferences": "Se încarcă preferințele...",
-    "unableToLoadPreferences": "Nu s-au putut încărca preferințele"
-  }
+    "unableToLoadPreferences": "Nu s-au putut încărca preferințele",
+    "receiveAlerts": "Receive alerts on this device",
+    "ruleViolationTriggered": "Rule violation triggered",
+    "newPlaybackBegan": "New playback began",
+    "playbackEnded": "Playback ended",
+    "exceededStreamLimit": "User exceeded stream limit",
+    "newDeviceDetected": "New device detected for user",
+    "trustScoreDegraded": "User trust score degraded",
+    "serverUnreachable": "Media server unreachable",
+    "serverBackOnline": "Media server back online",
+    "allViolationTypes": "All Violation Types",
+    "notifyForEveryRule": "Notify for every rule type",
+    "severityDescription": "Only notify for violations at or above this severity level",
+    "quietHoursDescription": "Pause non-critical notifications during set hours",
+    "startTime": "Start Time",
+    "endTime": "End Time",
+    "to": "to",
+    "timezoneLabel": "Timezone: {{timezone}}",
+    "criticalOverrideDescription": "High-severity violations still notify during quiet hours",
+    "rateLimitDescription": "Rate limits prevent notification spam. Current limits: {{perMinute}}/min, {{perHour}}/hour.",
+    "sendTestNotification": "Send Test Notification",
+    "testDescription": "Verify that push notifications are working correctly"
+  },
+  "dashboard": {
+    "today": "TODAY",
+    "hrs": "hrs"
+  },
+  "session": {
+    "streamTerminated": "Stream Terminated",
+    "sessionStopped": "The playback session has been stopped.",
+    "failedToTerminate": "Failed to Terminate"
+  },
+  "userDetail": {
+    "userMayBeRemoved": "This user may have been removed.",
+    "noLocationsRecorded": "No locations recorded",
+    "noDevicesRecorded": "No devices recorded",
+    "moreLocations": "+{{count}} more locations",
+    "moreDevices": "+{{count}} more devices",
+    "noViolations": "No violations",
+    "noTerminations": "No stream terminations",
+    "trustLow": "Low",
+    "trustMedium": "Medium",
+    "trustHigh": "High"
+  },
+  "violation": {
+    "violationNotFoundDesc": "This violation may have been dismissed or is no longer available.",
+    "customRule": "Custom Rule",
+    "streamComparison": "Stream Comparison",
+    "ips": "IPs"
+  },
+  "alerts": {
+    "done": "Done",
+    "clearFilters": "Clear Filters"
+  },
+  "history": {
+    "noHistoryFound": "No History Found",
+    "adjustFilters": "Try adjusting your filters",
+    "historyWillAppear": "Session history will appear here once users start streaming"
+  },
+  "users": {
+    "owner": "Owner",
+    "noUsers": "No Users",
+    "usersWillAppear": "Users will appear here after syncing with your media server",
+    "noUsersMatch": "No users match \"{{query}}\""
+  },
+  "activity": {
+    "playsOverTime": "Joacă în timp",
+    "concurrentStreams": "Stream-uri Concurente",
+    "platforms": "Platforme",
+    "playbackQuality": "Playback Quality"
+  },
+  "unauthenticated": {
+    "connectionLost": "Connection Lost",
+    "accessRevoked": "Your access to {{serverName}} was revoked. Ask the server owner for a new pairing code.",
+    "scanQrCode": "Scan QR Code"
+  },
+  "serverSelector": {
+    "servers": "Servers",
+    "selectServers": "Select Servers",
+    "serversSelected": "{{selected}} of {{total}} servers selected"
+  },
+  "reconnected": "Reconnected",
+  "actionsExecuted": "Actions Executed"
 }
