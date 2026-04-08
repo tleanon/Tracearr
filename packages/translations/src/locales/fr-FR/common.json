@@ -158,7 +158,16 @@
     "data": "Donnée",
     "size": "Taille",
     "items": "Éléments",
-    "name": "Nom"
+    "name": "Nom",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "Rechercher...",
@@ -241,7 +250,13 @@
     "library_one": "{{count}} bibliothèque",
     "library_other": "{{count}} bibliothèques",
     "error_one": "{{count}} erreur",
-    "error_other": "{{count}} erreurs"
+    "error_other": "{{count}} erreurs",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "Aucun changement détecté"
