@@ -158,7 +158,16 @@
     "data": "Dado",
     "size": "Tamanho",
     "items": "itens",
-    "name": "Nome:"
+    "name": "Nome:",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "Buscar...",
@@ -241,7 +250,13 @@
     "library_one": "Biblioteca {{count}}",
     "library_other": "Bibliotecas do {{count}}",
     "error_one": "Erro {{count}}",
-    "error_other": "Erros {{count}}"
+    "error_other": "Erros {{count}}",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "Nenhuma alteração detectada"
