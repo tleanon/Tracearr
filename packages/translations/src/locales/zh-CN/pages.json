@@ -216,12 +216,12 @@
       "lastActivity": "最后一次活动于",
       "neverActive": "从未活跃",
       "conditionEvidence": "条件证据",
-      "conditionGroup": "Condition Group {{index}}",
-      "matched": "{{matched}}/{{total}} matched",
+      "conditionGroup": "条件组{{index}}",
+      "matched": "{{matched}}{{total}}匹配",
       "actual": "实际的",
-      "relatedSessions": "{{count}} related session",
-      "relatedSessions_one": "{{count}} related session",
-      "relatedSessions_other": "{{count}} related sessions"
+      "relatedSessions": "{{count}}相关会话",
+      "relatedSessions_one": "{{count}}相关会话",
+      "relatedSessions_other": "{{count}}相关会话"
     }
   },
   "rules": {
@@ -447,7 +447,7 @@
     "dataTransferred": "已传输数据",
     "avgBitrate": "平均比特率",
     "avgBitrateMbps": "平均比特率 (Mbps)",
-    "peakBitrate": "Peak: {{value}} Mbps",
+    "peakBitrate": "高峰{{value}}Mbps",
     "totalWatchTime": "总观察时间",
     "uniqueUsers": "唯一用户",
     "dailyUsage": "每日带宽使用",
