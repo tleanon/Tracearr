@@ -158,7 +158,16 @@
     "data": "データ",
     "size": "サイズ",
     "items": "アイテム",
-    "name": "名前"
+    "name": "名前",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "検索...",
@@ -241,7 +250,13 @@
     "library_one": "{{count}} ライブラリ",
     "library_other": "{{count}} ライブラリ",
     "error_one": "{{count}} エラー",
-    "error_other": "{{count}} エラー"
+    "error_other": "{{count}} エラー",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "変更は検出されませんでした"
