@@ -158,7 +158,16 @@
     "data": "数据",
     "size": "尺寸",
     "items": "项目",
-    "name": "名称"
+    "name": "名称",
+    "product": "Product",
+    "deviceId": "Device ID",
+    "created": "Created",
+    "total": "total",
+    "mediaLength": "Media length",
+    "segments": "segments",
+    "streamDetails": "Stream Details",
+    "transcodeReason": "Transcode Reason",
+    "loadMore": "Load More"
   },
   "search": {
     "placeholder": "搜索……",
@@ -241,7 +250,13 @@
     "library_one": "{{count}}媒体",
     "library_other": "{{count}}媒体库",
     "error_one": "{{count}}错误",
-    "error_other": "{{count}}错误"
+    "error_other": "{{count}}错误",
+    "alert_one": "{{count}} alert",
+    "alert_other": "{{count}} alerts",
+    "location_one": "{{count}} location",
+    "location_other": "{{count}} locations",
+    "device_one": "{{count}} device",
+    "device_other": "{{count}} devices"
   },
   "messages": {
     "noChangesDetected": "未检测到更改"
