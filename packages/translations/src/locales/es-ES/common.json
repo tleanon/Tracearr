@@ -251,12 +251,12 @@
     "library_other": "{{count}} bibliotecas",
     "error_one": "{{count}} error",
     "error_other": "{{count}} errores",
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices"
+    "alert_one": "{{count}} alerta",
+    "alert_other": "{{count}} alertas",
+    "location_one": "{{count}} ubicación",
+    "location_other": "{{count}} ubicaciones",
+    "device_one": "{{count}} dispositivo",
+    "device_other": "{{count}} dispositivos"
   },
   "messages": {
     "noChangesDetected": "No se detectaron cambios"
