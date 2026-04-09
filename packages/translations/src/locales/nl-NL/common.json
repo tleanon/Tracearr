@@ -160,14 +160,14 @@
     "items": "Artikelen",
     "name": "naam",
     "product": "Product",
-    "deviceId": "Device ID",
-    "created": "Created",
-    "total": "total",
-    "mediaLength": "Media length",
-    "segments": "segments",
-    "streamDetails": "Stream Details",
-    "transcodeReason": "Transcode Reason",
-    "loadMore": "Load More"
+    "deviceId": "Apparaat ID",
+    "created": "Aangemaakt",
+    "total": "totaal",
+    "mediaLength": "Media lengte",
+    "segments": "segmenten",
+    "streamDetails": "Steam Details",
+    "transcodeReason": "Transcode Reden",
+    "loadMore": "Laad Meer"
   },
   "search": {
     "placeholder": "Zoeken...",
@@ -251,12 +251,12 @@
     "library_other": "{{count}} bibliotheken",
     "error_one": "{{count}} fout",
     "error_other": "{{count}} fouten",
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices"
+    "alert_one": "{{count}} waarschuwing",
+    "alert_other": "{{count}} waarschuwingen",
+    "location_one": "{{count}} locatie",
+    "location_other": "{{count}} locaties",
+    "device_one": "{{count}} apparaat",
+    "device_other": "{{count}} apparaten"
   },
   "messages": {
     "noChangesDetected": "Geen wijzigingen gevonden"
