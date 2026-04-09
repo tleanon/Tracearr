@@ -53,7 +53,7 @@
     "viewProfile": "查看個人資料",
     "viewOnGithub": "在 GitHub 上查看",
     "later": "稍候",
-    "previous": "Previous"
+    "previous": "上一個"
   },
   "states": {
     "loading": "載入中……",
@@ -75,7 +75,7 @@
     "deleting": "正在刪除……",
     "dismissing": "忽略……",
     "acknowledging": "確認……",
-    "completed": "Completed"
+    "completed": "已完成"
   },
   "playback": {
     "playing": "播放中",
@@ -151,23 +151,23 @@
     "recentSessions": "最近會話",
     "activeStreams": "正在串流",
     "days": "天",
-    "totalSessions": "Total Sessions",
-    "sessions": "会话",
-    "apiKey": "API密钥",
-    "rank": "Rank",
-    "data": "Data",
-    "size": "尺寸",
-    "items": "Items",
-    "name": "Name",
+    "totalSessions": "總會話",
+    "sessions": "會話",
+    "apiKey": "API 金鑰",
+    "rank": "等級",
+    "data": "資料",
+    "size": "大小",
+    "items": "項目",
+    "name": "名稱",
     "product": "Product",
-    "deviceId": "Device ID",
-    "created": "Created",
-    "total": "total",
-    "mediaLength": "Media length",
-    "segments": "segments",
-    "streamDetails": "Stream Details",
-    "transcodeReason": "Transcode Reason",
-    "loadMore": "Load More"
+    "deviceId": "裝置 ID",
+    "created": "建立時間",
+    "total": "總共",
+    "mediaLength": "媒體時長",
+    "segments": "分段",
+    "streamDetails": "串流細節",
+    "transcodeReason": "轉碼原因",
+    "loadMore": "載入更多"
   },
   "search": {
     "placeholder": "搜尋……",
@@ -181,16 +181,16 @@
   },
   "media": {
     "movie": "電影",
-    "movie_plural": "Movies",
+    "movie_plural": "電影",
     "episode": "劇集",
-    "episode_plural": "Episodes",
+    "episode_plural": "劇集",
     "track": "軌道",
-    "track_plural": "Tracks",
+    "track_plural": "音軌",
     "liveTV": "電視直播",
     "photo": "照片",
-    "tv": "TV",
-    "tvShows": "TV Shows",
-    "music": "Music"
+    "tv": "電視",
+    "tvShows": "電視劇",
+    "music": "音樂"
   },
   "servers": {
     "plex": "Plex",
