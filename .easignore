@@ -22,7 +22,6 @@ apps/server/
 apps/web/
 
 # Packages not used by mobile
-packages/translations/
 packages/test-utils/
 
 # GeoIP databases (server-only, 71 MB)
