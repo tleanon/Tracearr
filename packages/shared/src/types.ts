@@ -76,6 +76,7 @@ export interface ServerUser {
   sessionCount: number;
   joinedAt: Date | null;
   lastActivityAt: Date | null;
+  removedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   identityName?: string | null;

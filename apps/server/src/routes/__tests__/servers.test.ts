@@ -275,6 +275,8 @@ describe('Server Routes', () => {
         usersAdded: 5,
         usersUpdated: 0,
         usersSkipped: 0,
+        usersRemoved: 0,
+        usersRestored: 0,
         librariesSynced: 3,
         errors: [],
       });
@@ -657,6 +659,8 @@ describe('Server Routes', () => {
         usersAdded: 3,
         usersUpdated: 2,
         usersSkipped: 0,
+        usersRemoved: 0,
+        usersRestored: 0,
         librariesSynced: 5,
         errors: [],
       });
@@ -693,6 +697,8 @@ describe('Server Routes', () => {
         usersAdded: 1,
         usersUpdated: 0,
         usersSkipped: 0,
+        usersRemoved: 0,
+        usersRestored: 0,
         librariesSynced: 0,
         errors: ['Failed to fetch library 1', 'User sync timeout'],
       });

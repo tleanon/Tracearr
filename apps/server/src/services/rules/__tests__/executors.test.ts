@@ -120,6 +120,7 @@ function createMockServerUser(overrides: Partial<ServerUser> = {}): ServerUser {
     sessionCount: 10,
     joinedAt: new Date(),
     lastActivityAt: new Date(),
+    removedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

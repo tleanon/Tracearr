@@ -492,6 +492,7 @@ export function createMockServerUser(overrides: Partial<ServerUser> = {}): Serve
     lastActivityAt: overrides.lastActivityAt ?? null,
     createdAt: overrides.createdAt ?? new Date(),
     updatedAt: overrides.updatedAt ?? new Date(),
+    removedAt: overrides.removedAt ?? null,
     identityName: overrides.identityName ?? null,
   };
 }

@@ -220,6 +220,9 @@ export const serverUsers = pgTable(
     trustScore: integer('trust_score').notNull().default(100),
     sessionCount: integer('session_count').notNull().default(0), // For aggregate weighting
 
+    // Removal tracking - set when user no longer exists on media server
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+
     // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -237,6 +240,8 @@ export const serverUsers = pgTable(
     index('server_users_plex_account_idx').on(table.serverId, table.plexAccountId),
     // For account inactivity rule queries
     index('server_users_last_activity_idx').on(table.lastActivityAt),
+    // For filtering out removed users
+    index('server_users_removed_at_idx').on(table.removedAt),
   ]
 );
 

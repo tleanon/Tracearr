@@ -508,6 +508,8 @@ describe('Plex Auth Routes', () => {
         usersAdded: 5,
         usersUpdated: 0,
         usersSkipped: 0,
+        usersRemoved: 0,
+        usersRestored: 0,
         librariesSynced: 3,
         errors: [],
       });

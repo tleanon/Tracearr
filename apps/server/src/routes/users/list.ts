@@ -85,6 +85,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         sessionCount: serverUsers.sessionCount,
         joinedAt: serverUsers.joinedAt,
         lastActivityAt: serverUsers.lastActivityAt,
+        removedAt: serverUsers.removedAt,
         updatedAt: serverUsers.updatedAt,
         // Include identity info
         identityName: users.name,
@@ -142,6 +143,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         sessionCount: serverUsers.sessionCount,
         joinedAt: serverUsers.joinedAt,
         lastActivityAt: serverUsers.lastActivityAt,
+        removedAt: serverUsers.removedAt,
         updatedAt: serverUsers.updatedAt,
         // Include identity info
         identityName: users.name,

@@ -9,7 +9,7 @@ import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { getRedisPrefix } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
 import { isMaintenance } from '../serverState.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import type {
   Rule,
   AccountInactivityParams,
@@ -280,10 +280,10 @@ async function processInactivityCheck(job: Job<InactivityCheckJobData>): Promise
 
     console.log(`[Inactivity] Checking rule: ${rule.name} (${rule.id})`);
 
-    // Get users to check based on rule scope
+    // Get users to check based on rule scope (exclude removed users)
     let usersToCheck;
     if (rule.serverUserId) {
-      // Per-user rule - only check this specific user
+      // Per-user rule - only check this specific user (if not removed)
       usersToCheck = await db
         .select({
           id: serverUsers.id,
@@ -292,9 +292,9 @@ async function processInactivityCheck(job: Job<InactivityCheckJobData>): Promise
           serverId: serverUsers.serverId,
         })
         .from(serverUsers)
-        .where(eq(serverUsers.id, rule.serverUserId));
+        .where(and(eq(serverUsers.id, rule.serverUserId), isNull(serverUsers.removedAt)));
     } else {
-      // Global rule - check all users
+      // Global rule - check all active users
       usersToCheck = await db
         .select({
           id: serverUsers.id,
@@ -302,7 +302,8 @@ async function processInactivityCheck(job: Job<InactivityCheckJobData>): Promise
           lastActivityAt: serverUsers.lastActivityAt,
           serverId: serverUsers.serverId,
         })
-        .from(serverUsers);
+        .from(serverUsers)
+        .where(isNull(serverUsers.removedAt));
     }
 
     console.log(`[Inactivity] Checking ${usersToCheck.length} users for rule ${rule.name}`);

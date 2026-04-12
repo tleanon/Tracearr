@@ -486,6 +486,8 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         success: result.errors.length === 0,
         usersAdded: result.usersAdded,
         usersUpdated: result.usersUpdated,
+        usersRemoved: result.usersRemoved,
+        usersRestored: result.usersRestored,
         librariesSynced: result.librariesSynced,
         librarySyncJobId,
         errors: result.errors,

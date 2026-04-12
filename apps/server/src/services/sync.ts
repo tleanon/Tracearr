@@ -5,9 +5,9 @@
  * delegating user operations to userService.
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { servers } from '../db/schema.js';
+import { servers, serverUsers } from '../db/schema.js';
 import { createMediaServerClient, PlexClient, type MediaUser } from './mediaServer/index.js';
 import { syncUserFromMediaServer, type SyncUserOptions } from './userService.js';
 
@@ -15,6 +15,8 @@ export interface SyncResult {
   usersAdded: number;
   usersUpdated: number;
   usersSkipped: number;
+  usersRemoved: number;
+  usersRestored: number;
   librariesSynced: number;
   errors: string[];
 }
@@ -41,13 +43,24 @@ async function syncServerUsers(
   serverId: string,
   mediaUsers: MediaUser[],
   options: SyncUserOptions = {}
-): Promise<{ added: number; updated: number; skipped: number; errors: string[] }> {
+): Promise<{
+  added: number;
+  updated: number;
+  skipped: number;
+  removed: number;
+  restored: number;
+  errors: string[];
+}> {
   const errors: string[] = [];
   let added = 0;
   let updated = 0;
   let skipped = 0;
 
+  // Track which external IDs we see from the media server
+  const syncedExternalIds: string[] = [];
+
   for (const mediaUser of mediaUsers) {
+    syncedExternalIds.push(mediaUser.id);
     try {
       const result = await syncUserFromMediaServer(serverId, mediaUser, options);
       if (result === null) {
@@ -64,7 +77,51 @@ async function syncServerUsers(
     }
   }
 
-  return { added, updated, skipped, errors };
+  // For Plex, mediaUser.id is plex.tv account ID (stored as plexAccountId)
+  // For Jellyfin/Emby, mediaUser.id is the server-local ID (stored as externalId)
+  const matchColumn = options.isPlexServer ? serverUsers.plexAccountId : serverUsers.externalId;
+
+  // Mark users not in the server response as removed
+  let removed = 0;
+  if (syncedExternalIds.length > 0) {
+    const removedResult = await db
+      .update(serverUsers)
+      .set({ removedAt: new Date() })
+      .where(
+        and(
+          eq(serverUsers.serverId, serverId),
+          isNull(serverUsers.removedAt),
+          notInArray(matchColumn, syncedExternalIds)
+        )
+      )
+      .returning({ id: serverUsers.id });
+    removed = removedResult.length;
+    if (removed > 0) {
+      console.log(`[Sync] Marked ${removed} users as removed from server ${serverId}`);
+    }
+  }
+
+  // Restore any previously-removed users that reappeared in this sync
+  let restored = 0;
+  if (syncedExternalIds.length > 0) {
+    const restoredResult = await db
+      .update(serverUsers)
+      .set({ removedAt: null })
+      .where(
+        and(
+          eq(serverUsers.serverId, serverId),
+          isNotNull(serverUsers.removedAt),
+          inArray(matchColumn, syncedExternalIds)
+        )
+      )
+      .returning({ id: serverUsers.id });
+    restored = restoredResult.length;
+    if (restored > 0) {
+      console.log(`[Sync] Restored ${restored} previously removed users on server ${serverId}`);
+    }
+  }
+
+  return { added, updated, skipped, removed, restored, errors };
 }
 
 /**
@@ -107,13 +164,27 @@ async function syncPlexUsers(
   serverId: string,
   token: string,
   serverUrl: string
-): Promise<{ added: number; updated: number; skipped: number; errors: string[] }> {
+): Promise<{
+  added: number;
+  updated: number;
+  skipped: number;
+  removed: number;
+  restored: number;
+  errors: string[];
+}> {
   try {
     const plexUsers = await fetchPlexUsers(token, serverUrl);
     return syncServerUsers(serverId, plexUsers, { isPlexServer: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return { added: 0, updated: 0, skipped: 0, errors: [`Plex user sync failed: ${message}`] };
+    return {
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      removed: 0,
+      restored: 0,
+      errors: [`Plex user sync failed: ${message}`],
+    };
   }
 }
 
@@ -126,7 +197,14 @@ async function syncMediaServerUsers(
   serverType: 'jellyfin' | 'emby',
   serverUrl: string,
   token: string
-): Promise<{ added: number; updated: number; skipped: number; errors: string[] }> {
+): Promise<{
+  added: number;
+  updated: number;
+  skipped: number;
+  removed: number;
+  restored: number;
+  errors: string[];
+}> {
   const serverName = serverType.charAt(0).toUpperCase() + serverType.slice(1);
   try {
     const client = createMediaServerClient({
@@ -142,6 +220,8 @@ async function syncMediaServerUsers(
       added: 0,
       updated: 0,
       skipped: 0,
+      removed: 0,
+      restored: 0,
       errors: [`${serverName} user sync failed: ${message}`],
     };
   }
@@ -158,6 +238,8 @@ export async function syncServer(
     usersAdded: 0,
     usersUpdated: 0,
     usersSkipped: 0,
+    usersRemoved: 0,
+    usersRestored: 0,
     librariesSynced: 0,
     errors: [],
   };
@@ -181,12 +263,16 @@ export async function syncServer(
       result.usersAdded = userResult.added;
       result.usersUpdated = userResult.updated;
       result.usersSkipped = userResult.skipped;
+      result.usersRemoved = userResult.removed;
+      result.usersRestored = userResult.restored;
       result.errors.push(...userResult.errors);
     } else if (server.type === 'jellyfin' || server.type === 'emby') {
       const userResult = await syncMediaServerUsers(serverId, server.type, serverUrl, server.token);
       result.usersAdded = userResult.added;
       result.usersUpdated = userResult.updated;
       result.usersSkipped = userResult.skipped;
+      result.usersRemoved = userResult.removed;
+      result.usersRestored = userResult.restored;
       result.errors.push(...userResult.errors);
     }
   }

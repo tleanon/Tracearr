@@ -753,6 +753,7 @@ export async function createSessionWithRulesAtomic(
             joinedAt: null,
             lastActivityAt: serverUser.lastActivityAt,
             createdAt: serverUser.createdAt,
+            removedAt: null,
             updatedAt: new Date(),
             identityName: serverUser.identityName,
           };
@@ -1414,6 +1415,7 @@ export async function reEvaluateRulesOnTranscodeChange(
     joinedAt: null,
     lastActivityAt: serverUser.lastActivityAt,
     createdAt: serverUser.createdAt,
+    removedAt: null,
     updatedAt: new Date(),
     identityName: serverUser.identityName,
   };
@@ -1634,6 +1636,7 @@ export async function reEvaluateRulesOnPauseState(
     joinedAt: null,
     lastActivityAt: serverUser.lastActivityAt,
     createdAt: serverUser.createdAt,
+    removedAt: null,
     updatedAt: new Date(),
     identityName: serverUser.identityName,
   };
