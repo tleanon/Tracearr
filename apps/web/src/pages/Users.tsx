@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { TrustScoreBadge } from '@/components/users/TrustScoreBadge';
 import { getAvatarUrl } from '@/components/users/utils';
+import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BulkActionsToolbar, type BulkAction } from '@/components/ui/bulk-actions-toolbar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { User as UserIcon, Crown, Clock, Search, RotateCcw } from 'lucide-react';
+import { User as UserIcon, Crown, Clock, Search, RotateCcw, UserX } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { ServerUserWithIdentity } from '@tracearr/shared';
@@ -59,10 +60,26 @@ export function Users() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{user.identityName ?? user.username}</span>
+                  <span
+                    className={cn(
+                      'font-medium',
+                      user.removedAt && 'text-muted-foreground line-through'
+                    )}
+                  >
+                    {user.identityName ?? user.username}
+                  </span>
                   {user.role === 'owner' && (
                     <span title={t('common:labels.serverOwner')}>
                       <Crown className="h-4 w-4 text-yellow-500" />
+                    </span>
+                  )}
+                  {user.removedAt && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-500"
+                      title={`Removed ${formatDistanceToNow(new Date(user.removedAt), { addSuffix: true })}`}
+                    >
+                      <UserX className="h-3 w-3" />
+                      Removed
                     </span>
                   )}
                 </div>
