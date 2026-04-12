@@ -175,7 +175,7 @@ async function sweepGracePeriod(
             })
           : await findActiveSession({ serverId, sessionKey: snapshot.sessionKey });
       if (session) {
-        const { wasUpdated, needsRetry, retryData } = await stopSessionAtomic({
+        const { wasUpdated, durationMs, needsRetry, retryData } = await stopSessionAtomic({
           session,
           stoppedAt: new Date(),
         });
@@ -186,7 +186,10 @@ async function sweepGracePeriod(
         if (wasUpdated) {
           if (snapshot) {
             try {
-              await enqueueNotification({ type: 'session_stopped', payload: snapshot });
+              await enqueueNotification({
+                type: 'session_stopped',
+                payload: { ...snapshot, durationMs },
+              });
             } catch (notifErr) {
               console.error(`[Poller] Failed to enqueue stop notification for ${key}:`, notifErr);
             }
