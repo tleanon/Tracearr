@@ -253,7 +253,7 @@
     "error_other": "{{count}}错误",
     "alert_one": "{{count}} 警报",
     "alert_other": "{{count}} 条警报",
-    "location_one": "{{count}} location",
+    "location_one": "{{count}}违反",
     "location_other": "{{count}}条违反",
     "device_one": "{{count}} 已选",
     "device_other": "{{count}} 已选"
