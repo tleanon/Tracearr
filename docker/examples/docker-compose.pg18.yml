@@ -55,7 +55,7 @@ services:
 
   timescale:
     # TimescaleDB HA with PostgreSQL 18 - pinned for stability
-    image: timescale/timescaledb-ha:pg18.1-ts2.25.0
+    image: timescale/timescaledb-ha:pg18
     container_name: tracearr-db
     shm_size: 512mb  # Required for PostgreSQL shared memory (increase for large imports)
     ulimits:
